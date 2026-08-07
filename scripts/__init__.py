@@ -1,1 +1,1 @@
-"""ForgeFlow automation scripts."""
+"""ForgeFlow command-line and deployment utilities."""
