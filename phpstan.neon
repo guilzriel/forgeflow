@@ -3,4 +3,5 @@ parameters:
   paths:
     - app/src
     - public
+    - scripts
   tmpDir: .cache/phpstan

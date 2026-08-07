@@ -35,13 +35,20 @@ jobs:
         run: composer validate --strict
 
       - name: Install PHP dependencies
-        run: composer install --no-interaction --no-progress --prefer-dist
+        run: >-
+          composer install
+          --no-interaction
+          --no-progress
+          --prefer-dist
 
       - name: Check PHP syntax
         shell: bash
         run: |
           set -euo pipefail
-          find app public -type f -name '*.php' -print0 |
+          find app public scripts \
+            -type f \
+            -name '*.php' \
+            -print0 |
             xargs -0 -n1 php -l
 
       - name: Run PHP quality checks
@@ -64,6 +71,7 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+
       - name: Install Ansible tooling
         run: |
           python -m pip install \
@@ -72,10 +80,136 @@ jobs:
             "yamllint>=1.35,<2"
 
       - name: Install Ansible collections
-        run: ansible-galaxy collection install -r ansible/requirements.yml
+        run: >-
+          ansible-galaxy collection install
+          -r ansible/requirements.yml
 
       - name: Lint YAML
-        run: yamllint .github ansible compose.yaml .yamllint.yml
+        run: >-
+          yamllint
+          .github
+          ansible
+          compose.yaml
+          .yamllint.yml
 
       - name: Lint Ansible
         run: ansible-lint ansible
+
+  container-quality:
+    name: Container build and scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up PHP health-check runtime
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          coverage: none
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build PHP-FPM image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          target: runtime
+          load: true
+          push: false
+          tags: forgeflow-php-fpm:ci
+          build-args: |
+            APP_VERSION=ci
+            VCS_REF=${{ github.sha }}
+          cache-from: type=gha,scope=php-fpm
+          cache-to: type=gha,mode=max,scope=php-fpm
+
+      - name: Build Apache image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.apache
+          load: true
+          push: false
+          tags: forgeflow-apache:ci
+          cache-from: type=gha,scope=apache
+          cache-to: type=gha,mode=max,scope=apache
+
+      - name: Start complete application stack
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          docker network create forgeflow-ci
+
+          docker run \
+            --detach \
+            --name forgeflow-php-fpm \
+            --network forgeflow-ci \
+            --network-alias php-fpm \
+            forgeflow-php-fpm:ci
+
+          docker run \
+            --detach \
+            --name forgeflow-apache \
+            --network forgeflow-ci \
+            --publish 8080:8080 \
+            forgeflow-apache:ci
+
+      - name: Validate application health
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          php scripts/wait-for-health.php \
+            --url=http://127.0.0.1:8080/health \
+            --timeout=60
+
+          curl \
+            --fail \
+            --silent \
+            http://127.0.0.1:8080/health
+
+      - name: Show container logs after failure
+        if: failure()
+        shell: bash
+        run: |
+          docker logs forgeflow-php-fpm || true
+          docker logs forgeflow-apache || true
+
+      - name: Stop application stack
+        if: always()
+        shell: bash
+        run: |
+          docker rm --force forgeflow-apache || true
+          docker rm --force forgeflow-php-fpm || true
+          docker network rm forgeflow-ci || true
+
+      - name: Scan PHP-FPM image with Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: forgeflow-php-fpm:ci
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "0"
+
+      - name: Upload Trivy report
+        if: >-
+          always() &&
+          hashFiles('trivy-results.sarif') != '' &&
+          (github.event_name != 'pull_request' ||
+          github.event.pull_request.head.repo.full_name ==
+          github.repository)
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-results.sarif

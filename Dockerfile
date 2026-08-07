@@ -1,42 +1,49 @@
-# syntax=docker/dockerfile:1.7
-FROM python:3.12-slim AS builder
+FROM composer:2.8 AS dependencies
 
-ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_NO_CACHE_DIR=1
+WORKDIR /application
 
-WORKDIR /build
-COPY pyproject.toml README.md ./
-COPY src ./src
-RUN python -m pip wheel --wheel-dir /wheels .
+COPY composer.json composer.lock ./
 
-FROM python:3.12-slim AS runtime
+RUN composer install \
+    --no-dev \
+    --no-autoloader \
+    --no-interaction \
+    --no-progress \
+    --prefer-dist
 
-ARG APP_VERSION=0.1.0
-ARG VCS_REF=unknown
+COPY app ./app
 
-LABEL org.opencontainers.image.title="ForgeFlow Demo API" \
-      org.opencontainers.image.description="Reference service deployed by ForgeFlow" \
-      org.opencontainers.image.version="${APP_VERSION}" \
-      org.opencontainers.image.revision="${VCS_REF}" \
-      org.opencontainers.image.licenses="MIT"
+RUN composer dump-autoload \
+    --no-dev \
+    --classmap-authoritative \
+    --no-interaction
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    FORGEFLOW_VERSION="${APP_VERSION}" \
-    FORGEFLOW_COMMIT="${VCS_REF}"
+FROM php:8.3-fpm-bookworm AS runtime
 
-RUN groupadd --system --gid 10001 forgeflow \
-    && useradd --system --uid 10001 --gid forgeflow --home-dir /app forgeflow
+ARG APP_VERSION=development
+ARG VCS_REF=development
 
-WORKDIR /app
-COPY --from=builder /wheels /wheels
-RUN python -m pip install --no-cache-dir /wheels/* \
-    && rm -rf /wheels
+LABEL org.opencontainers.image.title="ForgeFlow PHP-FPM"
+LABEL org.opencontainers.image.description="PHP-FPM workload for ForgeFlow"
+LABEL org.opencontainers.image.version="${APP_VERSION}"
+LABEL org.opencontainers.image.revision="${VCS_REF}"
+LABEL org.opencontainers.image.source="https://github.com/guilzriel/forgeflow"
 
-USER 10001:10001
-EXPOSE 8000
+WORKDIR /var/www/forgeflow
 
-HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"
+COPY --from=dependencies /application/vendor ./vendor
+COPY app ./app
+COPY public ./public
+COPY docker/php-fpm/forgeflow.ini /usr/local/etc/php/conf.d/zz-forgeflow.ini
+COPY docker/php-fpm/forgeflow-pool.conf /usr/local/etc/php-fpm.d/zz-forgeflow.conf
 
-CMD ["uvicorn", "forgeflow_demo.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
+RUN chown -R www-data:www-data /var/www/forgeflow
+
+ENV FORGEFLOW_VERSION=${APP_VERSION}
+
+EXPOSE 9000
+
+HEALTHCHECK --interval=10s --timeout=3s --retries=5 \
+  CMD php-fpm -t || exit 1
+
+CMD ["php-fpm", "-F"]
