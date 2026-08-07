@@ -81,4 +81,3 @@ jobs:
       image: ${{ inputs.image }}
       source-sha: ${{ github.sha }}
     secrets: inherit
-

@@ -10,9 +10,7 @@ def test_accepts_versioned_dev_image() -> None:
 
 
 def test_accepts_commit_sha_in_production() -> None:
-    request = validate_deployment(
-        "production", "ghcr.io/example/forgeflow:0123456789abcdef"
-    )
+    request = validate_deployment("production", "ghcr.io/example/forgeflow:0123456789abcdef")
 
     assert request.tag == "0123456789abcdef"
 

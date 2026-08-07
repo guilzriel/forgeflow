@@ -1,4 +1,4 @@
-﻿---
+---
 - name: Roll back ForgeFlow to the previously recorded image
   hosts: all
   gather_facts: false
@@ -58,4 +58,3 @@
       until:
         - rollback_health.status == 200
         - rollback_health.json.status == "healthy"
-

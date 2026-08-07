@@ -1,4 +1,4 @@
-﻿---
+---
 - name: Validate deployment inputs
   ansible.builtin.assert:
     that:
@@ -109,4 +109,3 @@
       ansible.builtin.fail:
         msg: >-
           Deployment health validation failed. The previous container image was restored when one existed.
-
