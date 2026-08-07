@@ -1,4 +1,4 @@
-﻿---
+---
 forgeflow_app_image: ""
 forgeflow_app_environment: dev
 forgeflow_app_public_port: 8000
@@ -9,4 +9,3 @@ forgeflow_app_health_path: /health
 forgeflow_app_health_retries: 20
 forgeflow_app_health_delay: 3
 forgeflow_app_log_level: INFO
-

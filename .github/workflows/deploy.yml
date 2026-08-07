@@ -1,4 +1,4 @@
-﻿name: Deploy
+name: Deploy
 
 'on':
   workflow_dispatch:
@@ -81,4 +81,3 @@ jobs:
       image: ${{ inputs.image }}
       source-sha: ${{ github.sha }}
     secrets: inherit
-

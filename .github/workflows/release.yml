@@ -1,4 +1,4 @@
-﻿name: Release image
+name: Release image
 
 'on':
   push:
@@ -71,4 +71,3 @@ jobs:
             echo "- Digest: \`${{ steps.build.outputs.digest }}\`"
             echo "- Registry: \`ghcr.io/${GITHUB_REPOSITORY}\`"
           } >> "$GITHUB_STEP_SUMMARY"
-

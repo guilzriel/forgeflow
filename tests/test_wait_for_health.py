@@ -6,7 +6,7 @@ from scripts.wait_for_health import wait_for_health
 
 
 class HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self) -> None:  # noqa: N802
+    def do_GET(self) -> None:
         payload = json.dumps({"status": "healthy"}).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")

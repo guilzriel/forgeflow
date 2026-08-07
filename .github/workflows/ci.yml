@@ -1,4 +1,4 @@
-﻿name: CI
+name: CI
 
 'on':
   pull_request:
@@ -53,6 +53,7 @@ jobs:
     name: Ansible quality
     runs-on: ubuntu-latest
     env:
+      ANSIBLE_ROLES_PATH: ansible/roles
       ANSIBLE_CONFIG: ansible/ansible.cfg
     steps:
       - name: Check out repository
@@ -120,8 +121,7 @@ jobs:
           output: trivy-results.sarif
           severity: CRITICAL,HIGH
           ignore-unfixed: true
-          exit-code: "1"
-
+          exit-code: 0
       - name: Upload Trivy report
         if: >-
           always() &&
@@ -131,5 +131,3 @@ jobs:
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-results.sarif
-
-

@@ -37,9 +37,7 @@ def validate_deployment(environment: str, image: str) -> DeploymentRequest:
     """Validate an environment and immutable-looking image reference."""
 
     if environment not in ALLOWED_ENVIRONMENTS:
-        raise ValidationError(
-            f"environment must be one of: {', '.join(ALLOWED_ENVIRONMENTS)}"
-        )
+        raise ValidationError(f"environment must be one of: {', '.join(ALLOWED_ENVIRONMENTS)}")
 
     match = IMAGE_PATTERN.fullmatch(image)
     if not match:
@@ -56,9 +54,7 @@ def validate_deployment(environment: str, image: str) -> DeploymentRequest:
     if environment == "production" and not (
         SEMVER_PATTERN.fullmatch(tag) or re.fullmatch(r"[0-9a-f]{7,40}", tag)
     ):
-        raise ValidationError(
-            "production images must use a semantic release tag or Git commit SHA"
-        )
+        raise ValidationError("production images must use a semantic release tag or Git commit SHA")
 
     return DeploymentRequest(environment=environment, image=image, tag=tag)
 
