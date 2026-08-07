@@ -1,0 +1,38 @@
+{
+  "name": "guilzriel/forgeflow",
+  "description": "A PHP platform-delivery reference project using GitHub Actions, Ansible, Keeper Secrets Manager and encrypted systemd credentials.",
+  "type": "project",
+  "license": "MIT",
+  "require": {
+    "php": "^8.3"
+  },
+  "require-dev": {
+    "phpstan/phpstan": "^2.1",
+    "phpunit/phpunit": "^11.5",
+    "squizlabs/php_codesniffer": "^3.13"
+  },
+  "autoload": {
+    "psr-4": {
+      "ForgeFlow\\": "app/src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "ForgeFlow\\Tests\\": "app/tests/"
+    }
+  },
+  "scripts": {
+    "lint": "phpcs --standard=phpcs.xml app public",
+    "analyse": "phpstan analyse --configuration=phpstan.neon --no-progress",
+    "test": "phpunit --configuration=phpunit.xml",
+    "quality": [
+      "@lint",
+      "@analyse",
+      "@test"
+    ]
+  },
+  "config": {
+    "allow-plugins": false,
+    "sort-packages": true
+  }
+}

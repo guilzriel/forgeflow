@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<ruleset name="ForgeFlow">
+  <description>ForgeFlow PHP coding standard.</description>
+  <arg name="basepath" value="."/>
+  <arg name="colors"/>
+  <arg value="sp"/>
+  <file>app</file>
+  <file>public</file>
+  <rule ref="PSR12"/>
+</ruleset>

@@ -30,3 +30,6 @@ artifacts/
 # Ansible
 *.retry
 ansible/inventories/*/hosts.local.yml
+/vendor/
+/.cache/
+/.phpunit.cache/
