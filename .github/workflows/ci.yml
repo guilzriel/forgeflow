@@ -64,8 +64,6 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-          cache: pip
-
       - name: Install Ansible tooling
         run: |
           python -m pip install \
