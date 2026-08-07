@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit
+  bootstrap="vendor/autoload.php"
+  colors="true"
+  cacheDirectory=".cache/phpunit"
+>
+  <testsuites>
+    <testsuite name="ForgeFlow">
+      <directory>app/tests</directory>
+    </testsuite>
+  </testsuites>
+  <source>
+    <include>
+      <directory>app/src</directory>
+    </include>
+  </source>
+</phpunit>

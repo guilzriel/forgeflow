@@ -1,22 +1,32 @@
 services:
-  forgeflow:
+  php-fpm:
     build:
       context: .
+      dockerfile: Dockerfile
+      target: runtime
       args:
         APP_VERSION: local
-        VCS_REF: development
-    image: forgeflow:local
-    ports:
-      - "8000:8000"
+        VCS_REF: local
+    image: forgeflow-php-fpm:local
     environment:
-      FORGEFLOW_ENVIRONMENT: local
-      FORGEFLOW_READY: "true"
-      FORGEFLOW_LOG_LEVEL: INFO
+      FORGEFLOW_VERSION: local
     restart: unless-stopped
-    read_only: true
-    tmpfs:
-      - /tmp:size=16m,mode=1777
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
+    networks:
+      - forgeflow
+
+  apache:
+    build:
+      context: .
+      dockerfile: Dockerfile.apache
+    image: forgeflow-apache:local
+    depends_on:
+      - php-fpm
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    networks:
+      - forgeflow
+
+networks:
+  forgeflow:
+    name: forgeflow

@@ -1,51 +1,25 @@
-.PHONY: help install test lint typecheck run compose-up compose-down build ansible-lint validate all
-
-help:
-	@echo "ForgeFlow commands:"
-	@echo "  make install       Install the project and development tools"
-	@echo "  make test          Run unit tests with coverage"
-	@echo "  make lint          Run Ruff and YAML lint"
-	@echo "  make typecheck     Run mypy"
-	@echo "  make run           Run the API locally"
-	@echo "  make compose-up    Build and start the container"
-	@echo "  make compose-down  Stop the local container"
-	@echo "  make ansible-lint  Validate Ansible content"
-	@echo "  make validate      Run deployment-input validation examples"
-	@echo "  make all           Run the full local quality gate"
+.PHONY: install quality test build up down logs health
 
 install:
-	python -m pip install --upgrade pip
-	python -m pip install -e ".[dev]"
+composer install
+
+quality:
+composer quality
 
 test:
-	pytest --cov=forgeflow_demo --cov-report=term-missing
-
-lint:
-	ruff check src scripts tests
-	ruff format --check src scripts tests
-	yamllint .github ansible compose.yaml .yamllint.yml
-
-typecheck:
-	mypy
-
-run:
-	uvicorn forgeflow_demo.main:app --app-dir src --reload --port 8000
-
-compose-up:
-	docker compose up --build -d
-	python scripts/wait_for_health.py --url http://localhost:8000/health --timeout 60
-
-compose-down:
-	docker compose down --remove-orphans
+composer test
 
 build:
-	docker build --build-arg APP_VERSION=local --build-arg VCS_REF=development -t forgeflow:local .
+docker compose build
 
-ansible-lint:
-	ansible-galaxy collection install -r ansible/requirements.yml
-	ansible-lint ansible
+up:
+docker compose up --build -d
 
-validate:
-	python scripts/validate_deployment.py --environment dev --image ghcr.io/example/forgeflow:v0.1.0
+down:
+docker compose down --remove-orphans
 
-all: lint typecheck test validate
+logs:
+docker compose logs -f
+
+health:
+php scripts/wait-for-health.php --url=http://127.0.0.1:8080/health --timeout=60
