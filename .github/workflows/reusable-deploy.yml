@@ -1,6 +1,6 @@
-name: Reusable deployment
+﻿name: Reusable deployment
 
-on:
+'on':
   workflow_call:
     inputs:
       environment:
@@ -134,3 +134,4 @@ jobs:
       - name: Remove runtime credentials
         if: always()
         run: rm -rf .runtime ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+

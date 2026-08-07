@@ -1,17 +1,17 @@
----
+﻿---
 - name: Validate deployment inputs
   ansible.builtin.assert:
     that:
-      - forgeflow_image | length > 0
-      - forgeflow_environment in ["dev", "staging", "production"]
-      - not forgeflow_image.endswith(':latest')
-      - forgeflow_public_port | int > 0
-      - forgeflow_public_port | int < 65536
+      - forgeflow_app_image | length > 0
+      - forgeflow_app_environment in ["dev", "staging", "production"]
+      - not forgeflow_app_image.endswith(':latest')
+      - forgeflow_app_public_port | int > 0
+      - forgeflow_app_public_port | int < 65536
     fail_msg: "Provide an approved environment, explicit immutable image tag, and valid port."
 
 - name: Ensure deployment state directory exists
   ansible.builtin.file:
-    path: "{{ forgeflow_state_directory }}"
+    path: "{{ forgeflow_app_state_directory }}"
     state: directory
     owner: root
     group: root
@@ -19,13 +19,13 @@
 
 - name: Inspect the currently running container
   community.docker.docker_container_info:
-    name: "{{ forgeflow_container_name }}"
+    name: "{{ forgeflow_app_container_name }}"
   register: current_container
 
 - name: Record current image for rollback
   ansible.builtin.copy:
     content: "{{ current_container.container.Config.Image }}\n"
-    dest: "{{ forgeflow_state_directory }}/previous-image"
+    dest: "{{ forgeflow_app_state_directory }}/previous-image"
     owner: root
     group: root
     mode: "0640"
@@ -35,22 +35,22 @@
   block:
     - name: Pull requested image
       community.docker.docker_image:
-        name: "{{ forgeflow_image }}"
+        name: "{{ forgeflow_app_image }}"
         source: pull
 
     - name: Start ForgeFlow container
       community.docker.docker_container:
-        name: "{{ forgeflow_container_name }}"
-        image: "{{ forgeflow_image }}"
+        name: "{{ forgeflow_app_container_name }}"
+        image: "{{ forgeflow_app_image }}"
         state: started
         restart_policy: always
         recreate: true
         pull: never
         published_ports:
-          - "{{ forgeflow_public_port }}:{{ forgeflow_internal_port }}"
+          - "{{ forgeflow_app_public_port }}:{{ forgeflow_app_internal_port }}"
         env:
-          FORGEFLOW_ENVIRONMENT: "{{ forgeflow_environment }}"
-          FORGEFLOW_LOG_LEVEL: "{{ forgeflow_log_level }}"
+          forgeflow_app_environment: "{{ forgeflow_app_environment }}"
+          forgeflow_app_log_level: "{{ forgeflow_app_log_level }}"
         read_only: true
         tmpfs:
           - /tmp:size=16m,mode=1777
@@ -61,12 +61,12 @@
 
     - name: Wait for the deployed service to become healthy
       ansible.builtin.uri:
-        url: "http://127.0.0.1:{{ forgeflow_public_port }}{{ forgeflow_health_path }}"
+        url: "http://127.0.0.1:{{ forgeflow_app_public_port }}{{ forgeflow_app_health_path }}"
         status_code: 200
         return_content: true
       register: deployment_health
-      retries: "{{ forgeflow_health_retries }}"
-      delay: "{{ forgeflow_health_delay }}"
+      retries: "{{ forgeflow_app_health_retries }}"
+      delay: "{{ forgeflow_app_health_delay }}"
       until:
         - deployment_health.status == 200
         - deployment_health.json.status == "healthy"
@@ -74,10 +74,10 @@
     - name: Record successful deployment
       ansible.builtin.copy:
         content: |
-          image={{ forgeflow_image }}
-          environment={{ forgeflow_environment }}
+          image={{ forgeflow_app_image }}
+          environment={{ forgeflow_app_environment }}
           deployed_at={{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}
-        dest: "{{ forgeflow_state_directory }}/current-deployment"
+        dest: "{{ forgeflow_app_state_directory }}/current-deployment"
         owner: root
         group: root
         mode: "0640"
@@ -85,17 +85,17 @@
   rescue:
     - name: Restore the previous image after a failed health check
       community.docker.docker_container:
-        name: "{{ forgeflow_container_name }}"
+        name: "{{ forgeflow_app_container_name }}"
         image: "{{ current_container.container.Config.Image }}"
         state: started
         restart_policy: always
         recreate: true
         pull: never
         published_ports:
-          - "{{ forgeflow_public_port }}:{{ forgeflow_internal_port }}"
+          - "{{ forgeflow_app_public_port }}:{{ forgeflow_app_internal_port }}"
         env:
-          FORGEFLOW_ENVIRONMENT: "{{ forgeflow_environment }}"
-          FORGEFLOW_LOG_LEVEL: "{{ forgeflow_log_level }}"
+          forgeflow_app_environment: "{{ forgeflow_app_environment }}"
+          forgeflow_app_log_level: "{{ forgeflow_app_log_level }}"
         read_only: true
         tmpfs:
           - /tmp:size=16m,mode=1777
@@ -109,3 +109,4 @@
       ansible.builtin.fail:
         msg: >-
           Deployment health validation failed. The previous container image was restored when one existed.
+

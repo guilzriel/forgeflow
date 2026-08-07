@@ -1,6 +1,6 @@
-name: CI
+﻿name: CI
 
-on:
+'on':
   pull_request:
   push:
     branches: [main]
@@ -52,6 +52,8 @@ jobs:
   ansible-quality:
     name: Ansible quality
     runs-on: ubuntu-latest
+    env:
+      ANSIBLE_CONFIG: ansible/ansible.cfg
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -129,3 +131,5 @@ jobs:
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-results.sarif
+
+
