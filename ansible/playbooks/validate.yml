@@ -1,4 +1,4 @@
----
+﻿---
 - name: Validate ForgeFlow deployment prerequisites
   hosts: all
   gather_facts: true
@@ -18,3 +18,4 @@
     - name: Show validated Docker availability
       ansible.builtin.debug:
         msg: "Docker is reachable on {{ inventory_hostname }}."
+
