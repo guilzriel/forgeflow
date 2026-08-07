@@ -1,5 +1,4 @@
 import pytest
-
 from scripts.validate_deployment import ValidationError, validate_deployment
 
 
