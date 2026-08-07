@@ -53,6 +53,7 @@ jobs:
     name: Ansible quality
     runs-on: ubuntu-latest
     env:
+      ANSIBLE_ROLES_PATH: ansible/roles
       ANSIBLE_CONFIG: ansible/ansible.cfg
     steps:
       - name: Check out repository

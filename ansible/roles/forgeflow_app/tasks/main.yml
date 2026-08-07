@@ -20,16 +20,16 @@
 - name: Inspect the currently running container
   community.docker.docker_container_info:
     name: "{{ forgeflow_app_container_name }}"
-  register: current_container
+  register: forgeflow_app_current_container
 
 - name: Record current image for rollback
   ansible.builtin.copy:
-    content: "{{ current_container.container.Config.Image }}\n"
+    content: "{{ forgeflow_app_current_container.container.Config.Image }}\n"
     dest: "{{ forgeflow_app_state_directory }}/previous-image"
     owner: root
     group: root
     mode: "0640"
-  when: current_container.exists
+  when: forgeflow_app_current_container.exists
 
 - name: Deploy image and verify health
   block:
@@ -64,12 +64,12 @@
         url: "http://127.0.0.1:{{ forgeflow_app_public_port }}{{ forgeflow_app_health_path }}"
         status_code: 200
         return_content: true
-      register: deployment_health
+      register: forgeflow_app_deployment_health
       retries: "{{ forgeflow_app_health_retries }}"
       delay: "{{ forgeflow_app_health_delay }}"
       until:
-        - deployment_health.status == 200
-        - deployment_health.json.status == "healthy"
+        - forgeflow_app_deployment_health.status == 200
+        - forgeflow_app_deployment_health.json.status == "healthy"
 
     - name: Record successful deployment
       ansible.builtin.copy:
@@ -86,7 +86,7 @@
     - name: Restore the previous image after a failed health check
       community.docker.docker_container:
         name: "{{ forgeflow_app_container_name }}"
-        image: "{{ current_container.container.Config.Image }}"
+        image: "{{ forgeflow_app_current_container.container.Config.Image }}"
         state: started
         restart_policy: always
         recreate: true
@@ -103,7 +103,7 @@
           - ALL
         security_opts:
           - no-new-privileges:true
-      when: current_container.exists
+      when: forgeflow_app_current_container.exists
 
     - name: Fail after automatic recovery attempt
       ansible.builtin.fail:
