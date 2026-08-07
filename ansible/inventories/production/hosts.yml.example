@@ -1,0 +1,7 @@
+all:
+  hosts:
+    forgeflow-production-01:
+      ansible_host: 192.0.2.30
+      ansible_user: deploy
+      forgeflow_environment: production
+      forgeflow_public_port: 8000

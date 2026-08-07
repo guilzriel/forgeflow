@@ -1,0 +1,136 @@
+name: Reusable deployment
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+      image:
+        required: true
+        type: string
+      source-sha:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Ansible deployment
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    concurrency:
+      group: forgeflow-deploy-${{ inputs.environment }}
+      cancel-in-progress: false
+    timeout-minutes: 30
+    steps:
+      - name: Check out authorized source revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source-sha }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install deployment tooling
+        run: |
+          python -m pip install -e ".[dev]"
+          ansible-galaxy collection install -r ansible/requirements.yml
+
+      - name: Prepare protected deployment material
+        shell: bash
+        env:
+          ANSIBLE_INVENTORY: ${{ secrets.ANSIBLE_INVENTORY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d .runtime ~/.ssh
+
+          if [[ -n "$ANSIBLE_INVENTORY" ]]; then
+            printf '%s\n' "$ANSIBLE_INVENTORY" > .runtime/hosts.yml
+            chmod 600 .runtime/hosts.yml
+          fi
+
+          if [[ -n "$DEPLOY_SSH_KEY" ]]; then
+            printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
+            chmod 600 ~/.ssh/id_ed25519
+          fi
+
+          if [[ -n "$DEPLOY_KNOWN_HOSTS" ]]; then
+            printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+            chmod 600 ~/.ssh/known_hosts
+          fi
+
+          if [[ "${{ inputs.environment }}" != "dev" ]]; then
+            [[ -s .runtime/hosts.yml ]] || {
+              echo "ANSIBLE_INVENTORY is required for remote environments." >&2
+              exit 1
+            }
+            [[ -s ~/.ssh/id_ed25519 ]] || {
+              echo "DEPLOY_SSH_KEY is required for remote environments." >&2
+              exit 1
+            }
+            [[ -s ~/.ssh/known_hosts ]] || {
+              echo "DEPLOY_KNOWN_HOSTS is required for remote environments." >&2
+              exit 1
+            }
+          fi
+
+      - name: Select inventory
+        id: inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -s .runtime/hosts.yml ]]; then
+            echo "path=.runtime/hosts.yml" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ inputs.environment }}" == "dev" ]]; then
+            echo "path=ansible/inventories/dev/hosts.yml" >> "$GITHUB_OUTPUT"
+          else
+            echo "A protected ANSIBLE_INVENTORY environment secret is required." >&2
+            exit 1
+          fi
+
+      - name: Validate deployment request again
+        run: |
+          python scripts/validate_deployment.py \
+            --environment "${{ inputs.environment }}" \
+            --image "${{ inputs.image }}"
+
+      - name: Validate host prerequisites
+        working-directory: ansible
+        run: |
+          ansible-playbook \
+            -i "../${{ steps.inventory.outputs.path }}" \
+            playbooks/validate.yml
+
+      - name: Deploy with rolling health validation
+        working-directory: ansible
+        run: |
+          ansible-playbook \
+            -i "../${{ steps.inventory.outputs.path }}" \
+            playbooks/deploy.yml \
+            --extra-vars "forgeflow_image=${{ inputs.image }}" \
+            --extra-vars "forgeflow_environment=${{ inputs.environment }}"
+
+      - name: Write deployment summary
+        if: always()
+        run: |
+          {
+            echo "## Deployment result"
+            echo
+            echo "- Environment: \`${{ inputs.environment }}\`"
+            echo "- Image: \`${{ inputs.image }}\`"
+            echo "- Source revision: \`${{ inputs.source-sha }}\`"
+            echo "- Result: \`${{ job.status }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove runtime credentials
+        if: always()
+        run: rm -rf .runtime ~/.ssh/id_ed25519 ~/.ssh/known_hosts

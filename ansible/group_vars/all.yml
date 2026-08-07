@@ -1,0 +1,7 @@
+forgeflow_container_name: forgeflow
+forgeflow_internal_port: 8000
+forgeflow_state_directory: /opt/forgeflow
+forgeflow_health_path: /health
+forgeflow_health_retries: 20
+forgeflow_health_delay: 3
+forgeflow_log_level: INFO

@@ -1,0 +1,6 @@
+profile: production
+exclude_paths:
+  - .venv/
+  - ansible/inventories/staging/hosts.yml.example
+  - ansible/inventories/production/hosts.yml.example
+mock_roles: []

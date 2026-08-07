@@ -1,0 +1,7 @@
+all:
+  hosts:
+    forgeflow-staging-01:
+      ansible_host: 192.0.2.20
+      ansible_user: deploy
+      forgeflow_environment: staging
+      forgeflow_public_port: 8000

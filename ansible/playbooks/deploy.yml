@@ -1,0 +1,8 @@
+---
+- name: Deploy ForgeFlow
+  hosts: all
+  gather_facts: false
+  become: true
+  serial: 1
+  roles:
+    - role: forgeflow_app
