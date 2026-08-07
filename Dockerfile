@@ -1,4 +1,4 @@
-FROM composer:2.8 AS dependencies
+FROM composer:2.10 AS dependencies
 
 WORKDIR /application
 
