@@ -18,7 +18,7 @@ RUN composer dump-autoload \
     --classmap-authoritative \
     --no-interaction
 
-FROM php:8.3-fpm-bookworm AS runtime
+FROM php:8.5-fpm-bookworm AS runtime
 
 ARG APP_VERSION=development
 ARG VCS_REF=development
