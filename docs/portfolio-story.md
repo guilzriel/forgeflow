@@ -2,45 +2,43 @@
 
 ## One-line description
 
-ForgeFlow is a planning-first application delivery platform that uses GitHub Actions as the controlled operator interface and Ansible as the deployment engine.
+ForgeFlow is a controlled operational automation reference project using GitHub Actions, PHP, Ansible, and disposable Linux/container infrastructure.
 
-## What the project proves
+## What the project demonstrates
 
-- You can design reusable CI/CD instead of duplicating pipelines.
-- You understand the boundary between workflow orchestration and infrastructure logic.
-- You validate operator input before privileged execution.
-- You can publish and attest container images.
-- You use protected environments to separate planning from credentials and approvals.
-- You understand rolling deployment, health validation, and rollback.
-- You can build the reference application as well as the platform that delivers it.
-- You documented the project so another engineer can run and extend it.
+ForgeFlow separates operator-facing automation into explicit operational categories instead of placing unrelated delivery tasks into one large pipeline.
 
-## A useful interview explanation
+The public operating model is:
 
-> I built ForgeFlow to demonstrate how I approach platform engineering. A pull request goes through code, Ansible, YAML, and container security checks. Version tags publish an immutable image to GHCR. Deployment starts with a non-privileged planning job that validates the environment and image and produces an artifact. Execution is separate, gated by a protected GitHub Environment, and delegated to a reusable Ansible workflow. Ansible deploys one host at a time, validates service health, and restores the previous image when the new version fails validation.
+1. Validate Changes
+2. Deploy Component
+3. Server Operations
+4. Service & Application Operations
+5. Health Checks
+6. Deploy Environment
+7. Rollback
 
-## Design decisions to discuss
+Continuous Integration sits underneath the model as a supporting quality gate.
 
-### Why a demo API is included
+## Current implementation
 
-The API makes platform behavior observable. Health, readiness, version, commit, environment, and hostname can be checked by humans, containers, Ansible, and deployment workflows.
+Health Checks and Validate Changes are implemented and exercised against the disposable public demo topology.
 
-### Why deployment is manual
+Deploy Component currently implements the planning boundary: approved component, approved target, resolved hosts, bounded blast radius, source revision, and secret-free evidence.
 
-Manual dispatch keeps the reference project understandable and demonstrates approvals and operational input. The same reusable workflow could later be called automatically after promotion criteria are met.
+The execution stage is intentionally being built separately rather than carrying forward the repository's older registry-specific deployment example.
 
-### Why production tag rules are stricter
+## Design principles
 
-Production deployments should identify reproducible content. ForgeFlow rejects mutable tags and requires a release tag or commit SHA for production.
+- friendly operator selections
+- stable internal operation identifiers
+- explicit allowlists
+- fail-closed target authorization
+- bounded blast radius
+- secret-free execution manifests and plans
+- read-only validation where appropriate
+- structured GitHub summaries and evidence
+- Ansible for controlled Linux operational execution
+- disposable infrastructure for the public demonstration
 
-### Why Docker installation is not automated
-
-Host bootstrap has a different privilege and lifecycle boundary from application deployment. Keeping it separate prevents the application role from silently changing the host platform.
-
-### Why recovery is not called perfect rollback
-
-The project restores the previous image after a failed health check, but real rollback can also involve databases, queues, caches, and external state. The documentation states that boundary instead of overstating the guarantee.
-
-## Natural next improvements
-
-The roadmap includes Terraform, Kubernetes, deployment manifests, signed-image verification, observability, and progressive delivery. Each extension can be added without replacing the core planning contract.
+The goal is to keep the project small enough to understand end to end while still demonstrating patterns that map cleanly to real operational automation.

@@ -31,6 +31,35 @@ The manual validation workflow supports read-only configuration drift comparison
 
 Only approved host pairs may be selected. Web comparisons cannot target database hosts and database comparisons cannot target web hosts. Reports show differences only and omit matching settings.
 
+
+### Deploy Component
+
+Deploy Component replaces the repository's earlier release-image/reusable-deployment example.
+
+The current workflow is intentionally planning-only. It demonstrates the public operator contract without carrying forward the old registry-specific deployment implementation:
+
+- approved component selection
+- approved target selection
+- explicit resolved hosts
+- bounded maximum host count
+- exact source revision
+- secret-free deployment plan
+
+Controlled execution will be added as the next implementation stage.
+
+## Seven operational categories
+
+The intended operator-facing workflow model is:
+
+1. Validate Changes
+2. Deploy Component
+3. Server Operations
+4. Service & Application Operations
+5. Health Checks
+6. Deploy Environment
+7. Rollback
+
+Continuous Integration is a supporting quality gate and is not counted as one of the seven operational workflows.
 ## Public demo topology
 
 `compose.demo.yaml` creates a disposable environment:
