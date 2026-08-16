@@ -1,0 +1,62 @@
+---
+- name: ForgeFlow MariaDB MySQL health check
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Ping MariaDB
+      ansible.builtin.command:
+        argv:
+          - docker
+          - exec
+          - "{{ forgeflow_container }}"
+          - sh
+          - -lc
+          - 'mariadb-admin -uroot -p"$MARIADB_ROOT_PASSWORD" ping'
+      register: mysql_ping
+      changed_when: false
+      failed_when: false
+
+    - name: Execute read-only MariaDB health query
+      ansible.builtin.command:
+        argv:
+          - docker
+          - exec
+          - "{{ forgeflow_container }}"
+          - sh
+          - -lc
+          - >-
+            mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" -NBe
+            "SELECT 1; SELECT VERSION(); SHOW GLOBAL STATUS LIKE 'Uptime';"
+      register: mysql_query
+      changed_when: false
+      failed_when: false
+
+    - name: Inspect optional Galera state
+      ansible.builtin.command:
+        argv:
+          - docker
+          - exec
+          - "{{ forgeflow_container }}"
+          - sh
+          - -lc
+          - >-
+            mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" -NBe
+            "SHOW GLOBAL STATUS WHERE Variable_name IN ('wsrep_ready','wsrep_connected','wsrep_cluster_status','wsrep_local_state_comment');"
+      register: mysql_wsrep
+      changed_when: false
+      failed_when: false
+
+    - name: Build MariaDB health result
+      ansible.builtin.set_fact:
+        health_check_id: health.mysql
+        health_component: mysql
+        health_status: "{{ 'PASS' if mysql_ping.rc == 0 and mysql_query.rc == 0 else 'FAIL' }}"
+        health_message: >-
+          {{ 'MariaDB responded and read-only health queries succeeded.' if mysql_ping.rc == 0 and mysql_query.rc == 0 else 'MariaDB health query failed.' }}
+        health_details:
+          ping_ok: "{{ mysql_ping.rc == 0 }}"
+          query_ok: "{{ mysql_query.rc == 0 }}"
+          galera: "{{ 'available' if mysql_wsrep.stdout | trim | length > 0 else 'not_applicable' }}"
+
+    - name: Record MariaDB health result
+      ansible.builtin.include_tasks: tasks/write-health-result.yml

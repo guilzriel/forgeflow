@@ -1,0 +1,61 @@
+---
+- name: Collect safe Apache configuration evidence
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Validate Apache configuration
+      ansible.builtin.command:
+        argv: [docker, exec, "{{ forgeflow_container }}", apache2ctl, configtest]
+      register: apache_configtest
+      changed_when: false
+
+    - name: Read Apache version
+      ansible.builtin.command:
+        argv: [docker, exec, "{{ forgeflow_container }}", apache2ctl, -v]
+      register: apache_version
+      changed_when: false
+
+    - name: Read Apache modules
+      ansible.builtin.command:
+        argv: [docker, exec, "{{ forgeflow_container }}", apache2ctl, -M]
+      register: apache_modules
+      changed_when: false
+
+    - name: Read Apache virtual hosts
+      ansible.builtin.command:
+        argv: [docker, exec, "{{ forgeflow_container }}", apache2ctl, -S]
+      register: apache_vhosts
+      changed_when: false
+
+    - name: Read allowlisted Apache directives
+      ansible.builtin.command:
+        argv:
+          - docker
+          - exec
+          - "{{ forgeflow_container }}"
+          - sh
+          - -lc
+          - "grep -hE '^[[:space:]]*Timeout[[:space:]]+' /etc/apache2/conf-enabled/zz-demo.conf | tail -n 1"
+      register: apache_directives
+      changed_when: false
+
+    - name: Write Apache comparison capture
+      ansible.builtin.copy:
+        dest: "{{ capture_output_dir }}/{{ inventory_hostname }}.json"
+        mode: "0600"
+        content: >-
+          {{
+            {
+              'host': inventory_hostname,
+              'component': 'apache',
+              'data': {
+                'configtest': apache_configtest.stdout | trim,
+                'version': apache_version.stdout_lines,
+                'modules': apache_modules.stdout_lines,
+                'vhosts': apache_vhosts.stdout_lines + apache_vhosts.stderr_lines,
+                'directives_tsv': apache_directives.stdout | trim
+              }
+            }
+            | to_nice_json
+          }}
+      changed_when: false

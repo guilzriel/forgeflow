@@ -1,0 +1,40 @@
+---
+- name: ForgeFlow Redis health check
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Ping Redis
+      ansible.builtin.command:
+        argv: [docker, exec, "{{ forgeflow_container }}", redis-cli, PING]
+      register: redis_ping
+      changed_when: false
+      failed_when: false
+
+    - name: Read Redis server information
+      ansible.builtin.command:
+        argv: [docker, exec, "{{ forgeflow_container }}", redis-cli, INFO, server]
+      register: redis_server
+      changed_when: false
+      failed_when: false
+
+    - name: Read Redis client information
+      ansible.builtin.command:
+        argv: [docker, exec, "{{ forgeflow_container }}", redis-cli, INFO, clients]
+      register: redis_clients
+      changed_when: false
+      failed_when: false
+
+    - name: Build Redis health result
+      ansible.builtin.set_fact:
+        health_check_id: health.redis
+        health_component: redis
+        health_status: "{{ 'PASS' if redis_ping.rc == 0 and redis_ping.stdout | trim == 'PONG' and redis_server.rc == 0 and redis_clients.rc == 0 else 'FAIL' }}"
+        health_message: >-
+          {{ 'Redis responded to PING and returned read-only INFO data.' if redis_ping.rc == 0 and redis_ping.stdout | trim == 'PONG' else 'Redis did not respond as expected.' }}
+        health_details:
+          ping: "{{ redis_ping.stdout | trim }}"
+          server_info_available: "{{ redis_server.rc == 0 }}"
+          client_info_available: "{{ redis_clients.rc == 0 }}"
+
+    - name: Record Redis health result
+      ansible.builtin.include_tasks: tasks/write-health-result.yml

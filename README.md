@@ -1,239 +1,185 @@
 # ForgeFlow
 
-**A community-ready reference project for controlled application delivery with GitHub Actions, Ansible, Docker, FastAPI, automated validation, security scanning, environment approvals, health checks, and rollback.**
+ForgeFlow is a public PHP platform-engineering reference project focused on controlled CI/CD, infrastructure validation, operational health checks, configuration drift detection, and secure automation patterns.
 
-ForgeFlow is intentionally small enough to understand, but structured like a real internal developer platform. It demonstrates how a commit can move through repeatable quality gates, become a versioned container, and deploy through a controlled operational interface.
+The project is intentionally small enough to study end to end while demonstrating patterns that scale to real multi-service Linux environments.
 
-> This is a generic public project. It contains no private hostnames, credentials, employer configuration, or proprietary infrastructure code.
+## Runtime
 
-## What it demonstrates
+ForgeFlow uses one deployable web runtime image containing:
 
-- Pull-request CI for tests, linting, typing, YAML, Ansible, and container scanning
-- A containerized FastAPI reference service with liveness, readiness, and version endpoints
-- Versioned multi-architecture images published to GitHub Container Registry
-- Build provenance attestations
-- Manual deployment planning before execution
-- GitHub Environments for approvals, secrets, variables, and deployment history
-- A reusable deployment workflow instead of duplicated pipelines
-- Fail-closed deployment input validation
-- Ansible-based rolling deployment, post-deployment health checks, and automatic recovery
-- A documented community contribution and security model
+- Apache HTTP Server
+- PHP-FPM
+- the ForgeFlow PHP application
+- production Composer dependencies
 
-## Architecture
+Apache listens on port `8080` and proxies PHP requests to PHP-FPM on `127.0.0.1:9000` inside the same runtime image.
 
 ```text
-Pull request
-    |
-    v
-GitHub Actions CI
-  - Python quality and tests
-  - Ansible/YAML validation
-  - Container build and Trivy scan
-    |
-    v
-Version tag (vX.Y.Z)
-    |
-    v
-GHCR image + provenance attestation
-    |
-    v
-Manual deployment request
-  - Validate environment and immutable image tag
-  - Generate downloadable deployment plan
-  - Optional execution flag
-    |
-    v
-Protected GitHub Environment
-  - Approval / branch restrictions
-  - Environment-scoped inventory and SSH key
-    |
-    v
-Reusable Ansible deployment
-  - Preflight
-  - Serial deployment
-  - Health validation
-  - Automatic recovery to the previous image on failure
+Client
+  |
+  v
+Apache :8080
+  |
+  v
+PHP-FPM 127.0.0.1:9000
+  |
+  v
+ForgeFlow PHP application
 ```
 
-See [docs/architecture.md](docs/architecture.md) for the design rationale.
+The application exposes `/health` and returns structured JSON describing service, runtime, status, and version.
 
-## Quick start
+## CI/CD and quality
 
-### Requirements
+The repository uses GitHub Actions for:
 
-- Python 3.12+
-- Docker with Docker Compose
-- Git
-- Optional: GNU Make
+- PHP quality checks
+- PHPUnit tests
+- PHPStan static analysis
+- PHP_CodeSniffer / PSR-12 checks
+- Ansible linting and syntax validation
+- container builds
+- Trivy container vulnerability scanning
+- GitHub code-scanning SARIF publication from `main`
 
-### Windows PowerShell
+## Operational automation
+
+ForgeFlow exposes two operator-facing workflows.
+
+### Run Health Checks
+
+Read-only checks are available for:
+
+- connectivity
+- Apache
+- PHP-FPM
+- the ForgeFlow application
+- Redis
+- MariaDB/MySQL
+- shared storage
+- the complete demo environment
+
+Operators select friendly labels only. PHP catalogue code resolves those selections to approved target roles, explicit host lists, maximum host counts, inventory paths, and exact Ansible playbooks.
+
+No arbitrary command, hostname, inventory path, or playbook path is accepted from the workflow form.
+
+### Validate Changes
+
+The validation workflow performs read-only configuration comparisons for:
+
+- Apache
+- PHP
+- MariaDB/MySQL
+
+Only allowlisted host pairs are valid. Web-server comparisons cannot target database nodes, database comparisons cannot target web nodes, and section headings fail closed.
+
+Reports display meaningful differences only; matching values are omitted.
+
+## Public demo topology
+
+`compose.demo.yaml` creates a disposable environment that can run on a GitHub-hosted runner:
+
+```text
+WEB-A  ----\
+             +---- shared storage volume
+WEB-B  ----/
+
+DB-A
+DB-B
+Redis
+```
+
+Both web nodes use the same combined ForgeFlow image. Small intentional differences make drift reports useful:
+
+| Component | A | B |
+|---|---|---|
+| Apache `Timeout` | `60` | `90` |
+| PHP `memory_limit` | `128M` | `256M` |
+| PHP `max_execution_time` | `60` | `90` |
+| MariaDB `max_connections` | `100` | `150` |
+
+The database password used by GitHub Actions is generated for the workflow run, masked, and never included in manifests or uploaded evidence.
+
+## Controlled execution model
+
+```text
+GitHub Actions form
+        |
+        v
+Operation + target catalogues
+        |
+        v
+Fail-closed PHP resolution
+        |
+        v
+Resolution reauthorization
+        |
+        v
+Explicit blast radius + Ansible limit
+        |
+        v
+Secret-free execution manifest
+        |
+        v
+Read-only Ansible operation
+        |
+        v
+Structured evidence + GitHub summary
+```
+
+The catalogue is the source of truth for stable operation IDs, friendly labels, target roles, playbooks, maximum host counts, and risk level.
+
+Generated resolutions are reauthorized before execution so modified operation, target, host-list, inventory, or playbook fields are rejected.
+
+## Evidence and reporting
+
+Health checks produce:
+
+- a secret-free execution manifest
+- structured JSON health evidence
+- a human-readable Markdown report
+
+Full-environment health runs all applicable components even when an earlier component reports a failure. Missing expected evidence also forces the final result to fail.
+
+Configuration comparisons produce:
+
+- a secret-free execution manifest
+- safe read-only captures
+- a differences-only Markdown report
+
+## Local runtime
+
+Build and run the normal application:
 
 ```powershell
-Set-Location forgeflow
-powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap.ps1
-.\.venv\Scripts\Activate.ps1
-pytest
-
 docker compose up --build -d
-python .\scripts\wait_for_health.py --url http://localhost:8000/health --timeout 60
-Invoke-RestMethod http://localhost:8000/version | Format-List
+php .\scripts\wait-for-health.php --url="http://127.0.0.1:8080/health" --timeout=60
+Invoke-RestMethod -Uri "http://127.0.0.1:8080/health"
+docker compose down --remove-orphans
 ```
 
-Stop the demo:
+## Local demo topology
+
+From PowerShell, set an ephemeral password in the current shell before starting the demo database nodes:
 
 ```powershell
-docker compose down
+$env:MARIADB_ROOT_PASSWORD = [guid]::NewGuid().ToString("N")
+docker compose -f compose.demo.yaml up -d --build
+php .\scripts\automation\wait-demo.php
 ```
 
-### Linux or macOS
+The Ansible operational workflows are designed to run on Linux GitHub-hosted runners. The public demo inventory deliberately uses local Docker commands so no private SSH infrastructure is required.
 
-```bash
-cd forgeflow
-./scripts/bootstrap.sh
-source .venv/bin/activate
-make all
-make compose-up
-curl --fail http://localhost:8000/version
+When finished:
+
+```powershell
+docker compose -f compose.demo.yaml down --volumes --remove-orphans
+Remove-Item Env:MARIADB_ROOT_PASSWORD
 ```
 
-### API endpoints
+## Design direction
 
-| Endpoint | Purpose |
-|---|---|
-| `/` | Service identity |
-| `/health` | Liveness check |
-| `/ready` | Readiness check |
-| `/version` | Version, commit, environment, and hostname |
-| `/docs` | Interactive OpenAPI documentation |
+The next security layer is a provider-independent credential-file contract. Linux deployments can then use `systemd-creds`, while secret backends such as OpenBao or commercial providers can remain optional integrations rather than application dependencies.
 
-## Repository map
-
-```text
-.github/workflows/        CI, release, deployment, and reusable workflow
-ansible/                  Inventories, playbooks, role, and collection requirements
-docs/                     Architecture, deployment, and roadmap documentation
-scripts/                  Bootstrap, deployment validation, and health-wait tools
-src/forgeflow_demo/       FastAPI reference application
-tests/                    Application and policy tests
-Dockerfile                Multi-stage, non-root production image
-compose.yaml              Hardened local container example
-```
-
-## Local quality gate
-
-```bash
-make all
-```
-
-The equivalent commands are:
-
-```bash
-ruff check src scripts tests
-ruff format --check src scripts tests
-mypy
-pytest --cov=forgeflow_demo --cov-report=term-missing
-yamllint .github ansible compose.yaml .yamllint.yml
-python scripts/validate_deployment.py \
-  --environment dev \
-  --image ghcr.io/example/forgeflow:v0.1.0
-```
-
-Ansible lint also requires collections:
-
-```bash
-ansible-galaxy collection install -r ansible/requirements.yml
-ansible-lint ansible
-```
-
-## Publish your first image
-
-1. Create a public GitHub repository and push this project.
-2. Keep GitHub Actions enabled with read/write package permissions for the release workflow.
-3. Create and push a semantic version tag:
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-The release workflow publishes:
-
-```text
-ghcr.io/<owner>/<repository>:v0.1.0
-ghcr.io/<owner>/<repository>:sha-<commit>
-```
-
-## Configure deployment environments
-
-Create `dev`, `staging`, and `production` under **Settings → Environments**.
-
-For remote deployments, add these environment secrets:
-
-| Secret | Purpose |
-|---|---|
-| `ANSIBLE_INVENTORY` | Complete YAML inventory for that environment |
-| `DEPLOY_SSH_KEY` | SSH private key used only for the protected environment |
-| `DEPLOY_KNOWN_HOSTS` | Trusted SSH host-key entries for the approved targets |
-
-Recommended controls:
-
-- Require reviewers for production
-- Restrict production deployments to protected tags or branches
-- Prevent administrators from bypassing protection when appropriate
-- Keep inventories and SSH credentials environment-scoped
-- Use a dedicated, least-privileged deployment account
-
-The included `dev` inventory deploys to local Docker for demonstration. Staging and production examples use documentation-only addresses from the `192.0.2.0/24` block and cannot reach real hosts.
-
-## Trigger a deployment
-
-Open **Actions → Deploy → Run workflow** and enter:
-
-```text
-Environment: dev
-Image: ghcr.io/<owner>/<repository>:v0.1.0
-Execute: false
-```
-
-That creates and uploads a deployment plan without changing infrastructure. Review it, then run again with `Execute: true`.
-
-Production accepts only a semantic `vX.Y.Z` release tag or a Git commit SHA. Mutable tags such as `latest`, `main`, and `develop` are rejected.
-
-## Rollback
-
-The Ansible role records the previously running image before replacing the container. A failed health check triggers automatic recovery when a previous image exists.
-
-Manual rollback:
-
-```bash
-cd ansible
-ansible-playbook \
-  -i inventories/dev/hosts.yml \
-  playbooks/rollback.yml
-```
-
-## Security model
-
-- No arbitrary command or playbook inputs
-- Explicit deployment environments
-- Explicit immutable image references
-- Source revision passed from planning to execution
-- Protected environment secrets are unavailable before approval
-- Serial deployment prevents an all-at-once outage
-- Health validation gates success
-- Previous image recorded for recovery
-- Non-root, read-only container with Linux capabilities dropped
-- Dependabot coverage for Python, GitHub Actions, and Docker
-- Trivy scan for high and critical image vulnerabilities
-
-Read [SECURITY.md](SECURITY.md) before reporting a vulnerability.
-
-## Community
-
-ForgeFlow is designed to be forked and adapted. Good contributions improve reusable platform capabilities rather than adding organization-specific secrets or infrastructure.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), [the GitHub publishing guide](docs/github-setup.md), [the portfolio story](docs/portfolio-story.md), and [the roadmap](docs/roadmap.md).
-
-## License
-
-MIT. See [LICENSE](LICENSE).
+See `docs/operational-automation.md` for more detail.

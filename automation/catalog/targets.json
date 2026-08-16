@@ -1,0 +1,88 @@
+{
+  "catalog_version": 1,
+  "health_targets": {
+    "[DEMO-WEB] WEB-A": {
+      "role": "web",
+      "hosts": [
+        "WEB-A"
+      ]
+    },
+    "[DEMO-WEB] WEB-B": {
+      "role": "web",
+      "hosts": [
+        "WEB-B"
+      ]
+    },
+    "[DEMO-WEB] All web nodes": {
+      "role": "web",
+      "hosts": [
+        "WEB-A",
+        "WEB-B"
+      ]
+    },
+    "[DEMO-DB] DB-A": {
+      "role": "database",
+      "hosts": [
+        "DB-A"
+      ]
+    },
+    "[DEMO-DB] DB-B": {
+      "role": "database",
+      "hosts": [
+        "DB-B"
+      ]
+    },
+    "[DEMO-DB] All database nodes": {
+      "role": "database",
+      "hosts": [
+        "DB-A",
+        "DB-B"
+      ]
+    },
+    "[DEMO-REDIS] Redis": {
+      "role": "redis",
+      "hosts": [
+        "REDIS"
+      ]
+    },
+    "[DEMO-STORAGE] Shared storage": {
+      "role": "storage",
+      "hosts": [
+        "WEB-A",
+        "WEB-B"
+      ]
+    },
+    "[DEMO] All services": {
+      "role": "any",
+      "hosts": [
+        "WEB-A",
+        "WEB-B",
+        "DB-A",
+        "DB-B",
+        "REDIS"
+      ]
+    },
+    "[DEMO] Full environment": {
+      "role": "environment",
+      "hosts": [
+        "WEB-A",
+        "WEB-B",
+        "DB-A",
+        "DB-B",
+        "REDIS"
+      ]
+    }
+  },
+  "comparison_targets": {
+    "[DEMO-WEB] WEB-A vs WEB-B": {
+      "role": "web",
+      "left": "WEB-A",
+      "right": "WEB-B"
+    },
+    "[DEMO-DB] DB-A vs DB-B": {
+      "role": "database",
+      "left": "DB-A",
+      "right": "DB-B"
+    }
+  }
+}

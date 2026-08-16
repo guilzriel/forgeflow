@@ -1,0 +1,78 @@
+services:
+  storage-init:
+    image: alpine:3.22
+    command:
+      - /bin/sh
+      - -c
+      - printf 'forgeflow-shared-storage-demo\n' > /shared/.forgeflow-sentinel
+    volumes:
+      - forgeflow-shared:/shared
+
+  web-a:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+      args:
+        APP_VERSION: demo-a
+        VCS_REF: demo
+    image: forgeflow:demo
+    container_name: forgeflow-web-a
+    environment:
+      FORGEFLOW_VERSION: demo-a
+    ports:
+      - "18081:8080"
+    volumes:
+      - ./demo/web-a/apache-demo.conf:/etc/apache2/conf-enabled/zz-demo.conf:ro
+      - ./demo/web-a/php-demo.ini:/usr/local/etc/php/conf.d/zz-demo.ini:ro
+      - forgeflow-shared:/srv/forgeflow-shared:ro
+    depends_on:
+      storage-init:
+        condition: service_completed_successfully
+
+  web-b:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+      args:
+        APP_VERSION: demo-b
+        VCS_REF: demo
+    image: forgeflow:demo
+    container_name: forgeflow-web-b
+    environment:
+      FORGEFLOW_VERSION: demo-b
+    ports:
+      - "18082:8080"
+    volumes:
+      - ./demo/web-b/apache-demo.conf:/etc/apache2/conf-enabled/zz-demo.conf:ro
+      - ./demo/web-b/php-demo.ini:/usr/local/etc/php/conf.d/zz-demo.ini:ro
+      - forgeflow-shared:/srv/forgeflow-shared:ro
+    depends_on:
+      storage-init:
+        condition: service_completed_successfully
+      web-a:
+        condition: service_started
+
+  db-a:
+    image: mariadb:10.11
+    container_name: forgeflow-db-a
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?MARIADB_ROOT_PASSWORD must be set}
+    volumes:
+      - ./demo/db-a/zz-demo.cnf:/etc/mysql/conf.d/zz-demo.cnf:ro
+
+  db-b:
+    image: mariadb:10.11
+    container_name: forgeflow-db-b
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?MARIADB_ROOT_PASSWORD must be set}
+    volumes:
+      - ./demo/db-b/zz-demo.cnf:/etc/mysql/conf.d/zz-demo.cnf:ro
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: forgeflow-redis
+
+volumes:
+  forgeflow-shared:

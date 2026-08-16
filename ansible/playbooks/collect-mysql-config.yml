@@ -1,0 +1,43 @@
+---
+- name: Collect safe MariaDB MySQL configuration evidence
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Read MariaDB client version
+      ansible.builtin.command:
+        argv: [docker, exec, "{{ forgeflow_container }}", mariadb, --version]
+      register: mysql_version
+      changed_when: false
+
+    - name: Read allowlisted MariaDB variables
+      ansible.builtin.command:
+        argv:
+          - docker
+          - exec
+          - "{{ forgeflow_container }}"
+          - sh
+          - -lc
+          - >-
+            mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" -NBe
+            "SHOW VARIABLES WHERE Variable_name IN
+            ('max_connections','max_allowed_packet','sql_mode','innodb_buffer_pool_size','character_set_server','collation_server');"
+      register: mysql_variables
+      changed_when: false
+
+    - name: Write MariaDB comparison capture
+      ansible.builtin.copy:
+        dest: "{{ capture_output_dir }}/{{ inventory_hostname }}.json"
+        mode: "0600"
+        content: >-
+          {{
+            {
+              'host': inventory_hostname,
+              'component': 'mysql',
+              'data': {
+                'version': mysql_version.stdout | trim,
+                'variables_tsv': mysql_variables.stdout | trim
+              }
+            }
+            | to_nice_json
+          }}
+      changed_when: false

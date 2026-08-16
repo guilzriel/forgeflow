@@ -1,5 +1,5 @@
 services:
-  php-fpm:
+  forgeflow:
     build:
       context: .
       dockerfile: Dockerfile
@@ -7,26 +7,9 @@ services:
       args:
         APP_VERSION: local
         VCS_REF: local
-    image: forgeflow-php-fpm:local
+    image: forgeflow:local
     environment:
       FORGEFLOW_VERSION: local
-    restart: unless-stopped
-    networks:
-      - forgeflow
-
-  apache:
-    build:
-      context: .
-      dockerfile: Dockerfile.apache
-    image: forgeflow-apache:local
-    depends_on:
-      - php-fpm
     ports:
       - "8080:8080"
     restart: unless-stopped
-    networks:
-      - forgeflow
-
-networks:
-  forgeflow:
-    name: forgeflow

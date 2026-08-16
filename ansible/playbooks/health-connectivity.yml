@@ -1,0 +1,32 @@
+---
+- name: ForgeFlow connectivity health check
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Inspect target container running state
+      ansible.builtin.command:
+        argv:
+          - docker
+          - ps
+          - --filter
+          - "name=^/{{ forgeflow_container }}$"
+          - --filter
+          - status=running
+          - --quiet
+      register: container_state
+      changed_when: false
+      failed_when: false
+
+    - name: Build connectivity health result
+      ansible.builtin.set_fact:
+        health_check_id: health.connectivity
+        health_component: connectivity
+        health_status: "{{ 'PASS' if container_state.rc == 0 and container_state.stdout | trim | length > 0 else 'FAIL' }}"
+        health_message: >-
+          {{ 'Container is reachable and running.' if container_state.rc == 0 and container_state.stdout | trim | length > 0 else 'Container is not reachable or not running.' }}
+        health_details:
+          container: "{{ forgeflow_container }}"
+          running: "{{ container_state.stdout | trim | length > 0 }}"
+
+    - name: Record connectivity health result
+      ansible.builtin.include_tasks: tasks/write-health-result.yml

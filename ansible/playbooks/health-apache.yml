@@ -1,0 +1,73 @@
+---
+- name: ForgeFlow Apache health check
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Validate Apache configuration
+      ansible.builtin.command:
+        argv: [docker, exec, "{{ forgeflow_container }}", apache2ctl, configtest]
+      register: apache_configtest
+      changed_when: false
+      failed_when: false
+
+    - name: Read Apache version
+      ansible.builtin.command:
+        argv: [docker, exec, "{{ forgeflow_container }}", apache2ctl, -v]
+      register: apache_version
+      changed_when: false
+      failed_when: false
+
+    - name: Read loaded Apache modules
+      ansible.builtin.command:
+        argv: [docker, exec, "{{ forgeflow_container }}", apache2ctl, -M]
+      register: apache_modules
+      changed_when: false
+      failed_when: false
+
+    - name: Verify Apache listener
+      ansible.builtin.command:
+        argv:
+          - docker
+          - exec
+          - "{{ forgeflow_container }}"
+          - sh
+          - -lc
+          - "ss -ltn | grep -Eq '(^|[:\\]])8080[[:space:]]'"
+      register: apache_listener
+      changed_when: false
+      failed_when: false
+
+    - name: Verify Apache can reach the front controller
+      ansible.builtin.command:
+        argv: [docker, exec, "{{ forgeflow_container }}", curl, --fail, --silent, http://127.0.0.1:8080/health]
+      register: apache_http
+      changed_when: false
+      failed_when: false
+
+    - name: Determine required module state
+      ansible.builtin.set_fact:
+        apache_required_modules_ok: >-
+          {{
+            'proxy_module' in apache_modules.stdout
+            and 'proxy_fcgi_module' in apache_modules.stdout
+            and 'rewrite_module' in apache_modules.stdout
+            and 'headers_module' in apache_modules.stdout
+          }}
+
+    - name: Build Apache health result
+      ansible.builtin.set_fact:
+        health_check_id: health.apache
+        health_component: apache
+        health_status: >-
+          {{ 'PASS' if apache_configtest.rc == 0 and apache_version.rc == 0 and apache_modules.rc == 0 and apache_listener.rc == 0 and apache_http.rc == 0 and apache_required_modules_ok else 'FAIL' }}
+        health_message: >-
+          {{ 'Apache configuration, modules, listener and HTTP path are healthy.' if apache_configtest.rc == 0 and apache_listener.rc == 0 and apache_http.rc == 0 and apache_required_modules_ok else 'One or more Apache health assertions failed.' }}
+        health_details:
+          configtest_rc: "{{ apache_configtest.rc }}"
+          listener_8080: "{{ apache_listener.rc == 0 }}"
+          required_modules: "{{ apache_required_modules_ok }}"
+          http_health: "{{ apache_http.rc == 0 }}"
+          version: "{{ apache_version.stdout | trim }}"
+
+    - name: Record Apache health result
+      ansible.builtin.include_tasks: tasks/write-health-result.yml

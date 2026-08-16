@@ -1,0 +1,40 @@
+---
+- name: ForgeFlow application health check
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Read application health JSON
+      ansible.builtin.command:
+        argv: [docker, exec, "{{ forgeflow_container }}", curl, --fail, --silent, http://127.0.0.1:8080/health]
+      register: app_health
+      changed_when: false
+      failed_when: false
+
+    - name: Validate application health contract
+      ansible.builtin.command:
+        argv:
+          - docker
+          - exec
+          - "{{ forgeflow_container }}"
+          - php
+          - -r
+          - >-
+            $d=json_decode(file_get_contents('http://127.0.0.1:8080/health'),true);
+            exit(is_array($d)&&($d['service']??'')==='forgeflow'&&($d['runtime']??'')==='php'&&($d['status']??'')==='healthy'&&trim((string)($d['version']??''))!==''?0:1);
+      register: app_contract
+      changed_when: false
+      failed_when: false
+
+    - name: Build application health result
+      ansible.builtin.set_fact:
+        health_check_id: health.application
+        health_component: application
+        health_status: "{{ 'PASS' if app_health.rc == 0 and app_contract.rc == 0 else 'FAIL' }}"
+        health_message: >-
+          {{ 'ForgeFlow /health returned the expected contract.' if app_health.rc == 0 and app_contract.rc == 0 else 'ForgeFlow /health did not satisfy the expected contract.' }}
+        health_details:
+          http_ok: "{{ app_health.rc == 0 }}"
+          contract_ok: "{{ app_contract.rc == 0 }}"
+
+    - name: Record application health result
+      ansible.builtin.include_tasks: tasks/write-health-result.yml
