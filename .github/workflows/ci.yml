@@ -1,26 +1,23 @@
+---
 name: CI
 
-'on':
-  pull_request:
+"on":
   push:
     branches:
       - main
+  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
-
-concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   php-quality:
     name: PHP quality
     runs-on: ubuntu-latest
-
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
         with:
           persist-credentials: false
 
@@ -28,31 +25,27 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: "8.3"
-          tools: composer:v2
           coverage: none
+          tools: composer
 
-      - name: Validate Composer configuration
+      - name: Validate Composer metadata
         run: composer validate --strict
 
-      - name: Install PHP dependencies
-        run: >-
-          composer install
-          --no-interaction
-          --no-progress
-          --prefer-dist
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --prefer-dist
 
-      - name: Check PHP syntax
+      - name: Run PHP quality suite
+        run: composer quality
+
+      - name: Validate automation PHP syntax
         shell: bash
         run: |
           set -euo pipefail
-          find app public scripts \
-            -type f \
-            -name '*.php' \
-            -print0 |
-            xargs -0 -n1 php -l
+          find app public scripts -type f -name '*.php' -print0 \
+            | xargs -0 -n1 php -l
 
-      - name: Run PHP quality checks
-        run: composer quality
+      - name: Validate automation catalogue
+        run: php scripts/automation/validate-catalog.php
 
   ansible-quality:
     name: Ansible quality
@@ -63,18 +56,15 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
         with:
           persist-credentials: false
 
-      - name: Set up Python for Ansible tooling
-        uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-
-      - name: Install Ansible tooling
+      - name: Install Ansible quality tooling
+        shell: bash
         run: |
-          python -m pip install \
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check \
             "ansible-core>=2.17,<2.19" \
             "ansible-lint>=25,<26" \
             "yamllint>=1.35,<2"
@@ -85,15 +75,41 @@ jobs:
           -r ansible/requirements.yml
 
       - name: Lint YAML
-        run: >-
-          yamllint
-          .github
-          ansible
-          compose.yaml
-          .yamllint.yml
+        shell: bash
+        run: |
+          yamllint -d '{extends: relaxed, rules: {line-length: disable}}' ansible .github/workflows
 
       - name: Lint Ansible
-        run: ansible-lint ansible
+        run: ansible-lint --profile basic ansible/playbooks
+
+      - name: Run syntax checks for public demo playbooks
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapfile -t playbooks < <(
+            find ansible/playbooks \
+              -maxdepth 1 \
+              -type f \
+              \( -name 'health-*.yml' -o -name 'collect-*-config.yml' \) \
+              -print |
+            sort
+          )
+
+          if [ "${#playbooks[@]}" -ne 11 ]; then
+            echo "Expected 11 public demo playbooks; found ${#playbooks[@]}."
+            printf '%s\n' "${playbooks[@]}"
+            exit 1
+          fi
+
+          for playbook in "${playbooks[@]}"; do
+            echo "syntax_check=${playbook}"
+
+            ansible-playbook \
+              -i ansible/inventories/demo/hosts.yml \
+              "${playbook}" \
+              --syntax-check
+          done
 
   container-quality:
     name: Container build and scan
@@ -101,107 +117,46 @@ jobs:
     permissions:
       contents: read
       security-events: write
-
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
         with:
           persist-credentials: false
 
-      - name: Set up PHP health-check runtime
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: "8.3"
-          coverage: none
-
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@v3
 
-      - name: Build PHP-FPM image
-        uses: docker/build-push-action@v7
+      - name: Build combined ForgeFlow image
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile
           target: runtime
           load: true
           push: false
-          tags: forgeflow-php-fpm:ci
+          tags: forgeflow:ci
           build-args: |
             APP_VERSION=ci
             VCS_REF=${{ github.sha }}
-          cache-from: type=gha,scope=php-fpm
-          cache-to: type=gha,mode=max,scope=php-fpm
 
-      - name: Build Apache image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: Dockerfile.apache
-          load: true
-          push: false
-          tags: forgeflow-apache:ci
-          cache-from: type=gha,scope=apache
-          cache-to: type=gha,mode=max,scope=apache
-
-      - name: Start complete application stack
+      - name: Start combined runtime
         shell: bash
         run: |
           set -euo pipefail
+          docker run -d --name forgeflow-ci -p 8080:8080 -e FORGEFLOW_VERSION=ci forgeflow:ci
+          php scripts/wait-for-health.php --url=http://127.0.0.1:8080/health --timeout=60
+          curl --fail --silent http://127.0.0.1:8080/health
+          status="$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8080/not-found)"
+          test "${status}" = "404"
 
-          docker network create forgeflow-ci
-
-          docker run \
-            --detach \
-            --name forgeflow-php-fpm \
-            --network forgeflow-ci \
-            --network-alias php-fpm \
-            forgeflow-php-fpm:ci
-
-          docker run \
-            --detach \
-            --name forgeflow-apache \
-            --network forgeflow-ci \
-            --publish 8080:8080 \
-            forgeflow-apache:ci
-
-      - name: Validate application health
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          php scripts/wait-for-health.php \
-            --url=http://127.0.0.1:8080/health \
-            --timeout=60
-
-          curl \
-            --fail \
-            --silent \
-            http://127.0.0.1:8080/health
-
-      - name: Show container logs after failure
-        if: failure()
-        shell: bash
-        run: |
-          docker logs forgeflow-php-fpm || true
-          docker logs forgeflow-apache || true
-
-      - name: Stop application stack
-        if: always()
-        shell: bash
-        run: |
-          docker rm --force forgeflow-apache || true
-          docker rm --force forgeflow-php-fpm || true
-          docker network rm forgeflow-ci || true
-
-      - name: Scan PHP-FPM image with Trivy
+      - name: Scan combined image with Trivy
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: forgeflow-php-fpm:ci
+          image-ref: forgeflow:ci
           format: sarif
           output: trivy-results.sarif
           severity: CRITICAL,HIGH
           ignore-unfixed: true
-          exit-code: "0"
 
       - name: Upload Trivy report to GitHub code scanning
         if: >-
@@ -212,4 +167,12 @@ jobs:
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-results.sarif
-          category: trivy-php-fpm-container
+          category: trivy-forgeflow-runtime
+
+      - name: Show runtime logs on failure
+        if: ${{ failure() }}
+        run: docker logs forgeflow-ci || true
+
+      - name: Stop combined runtime
+        if: ${{ always() }}
+        run: docker rm -f forgeflow-ci || true

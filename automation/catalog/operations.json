@@ -1,0 +1,123 @@
+{
+  "catalog_version": 1,
+  "operations": {
+    "health.connectivity": {
+      "label": "[BASIC] Connectivity",
+      "category": "run_health_checks",
+      "target_roles": [
+        "web",
+        "database",
+        "redis",
+        "storage",
+        "any"
+      ],
+      "playbook": "ansible/playbooks/health-connectivity.yml",
+      "maximum_hosts": 5,
+      "risk": "low"
+    },
+    "health.apache": {
+      "label": "[APACHE] Apache",
+      "category": "run_health_checks",
+      "target_roles": [
+        "web"
+      ],
+      "playbook": "ansible/playbooks/health-apache.yml",
+      "maximum_hosts": 2,
+      "risk": "low"
+    },
+    "health.php_fpm": {
+      "label": "[PHP] PHP-FPM",
+      "category": "run_health_checks",
+      "target_roles": [
+        "web"
+      ],
+      "playbook": "ansible/playbooks/health-php-fpm.yml",
+      "maximum_hosts": 2,
+      "risk": "low"
+    },
+    "health.application": {
+      "label": "[APP] ForgeFlow application",
+      "category": "run_health_checks",
+      "target_roles": [
+        "web"
+      ],
+      "playbook": "ansible/playbooks/health-application.yml",
+      "maximum_hosts": 2,
+      "risk": "low"
+    },
+    "health.redis": {
+      "label": "[REDIS] Redis",
+      "category": "run_health_checks",
+      "target_roles": [
+        "redis"
+      ],
+      "playbook": "ansible/playbooks/health-redis.yml",
+      "maximum_hosts": 1,
+      "risk": "low"
+    },
+    "health.mysql": {
+      "label": "[MYSQL] MariaDB / MySQL",
+      "category": "run_health_checks",
+      "target_roles": [
+        "database"
+      ],
+      "playbook": "ansible/playbooks/health-mysql.yml",
+      "maximum_hosts": 2,
+      "risk": "low"
+    },
+    "health.storage": {
+      "label": "[STORAGE] Shared storage",
+      "category": "run_health_checks",
+      "target_roles": [
+        "storage"
+      ],
+      "playbook": "ansible/playbooks/health-storage.yml",
+      "maximum_hosts": 2,
+      "risk": "low"
+    },
+    "health.full_environment": {
+      "label": "[FULL] Full environment",
+      "category": "run_health_checks",
+      "target_roles": [
+        "environment"
+      ],
+      "playbook": "ansible/playbooks/health-full-environment.yml",
+      "maximum_hosts": 5,
+      "risk": "low",
+      "expected_results": 16
+    },
+    "validate.apache_config_compare": {
+      "label": "[APACHE] Compare Apache configuration",
+      "category": "validate_changes",
+      "component": "apache",
+      "target_roles": [
+        "web"
+      ],
+      "playbook": "ansible/playbooks/collect-apache-config.yml",
+      "maximum_hosts": 2,
+      "risk": "low"
+    },
+    "validate.php_config_compare": {
+      "label": "[PHP] Compare PHP configuration",
+      "category": "validate_changes",
+      "component": "php",
+      "target_roles": [
+        "web"
+      ],
+      "playbook": "ansible/playbooks/collect-php-config.yml",
+      "maximum_hosts": 2,
+      "risk": "low"
+    },
+    "validate.mysql_config_compare": {
+      "label": "[MYSQL] Compare MariaDB / MySQL configuration",
+      "category": "validate_changes",
+      "component": "mysql",
+      "target_roles": [
+        "database"
+      ],
+      "playbook": "ansible/playbooks/collect-mysql-config.yml",
+      "maximum_hosts": 2,
+      "risk": "low"
+    }
+  }
+}

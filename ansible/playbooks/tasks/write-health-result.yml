@@ -1,0 +1,26 @@
+---
+- name: Ensure health evidence directory exists
+  ansible.builtin.file:
+    path: "{{ health_result_dir }}"
+    state: directory
+    mode: "0700"
+  changed_when: false
+
+- name: Write structured health evidence
+  ansible.builtin.copy:
+    dest: >-
+      {{ health_result_dir }}/{{ health_check_id | replace('.', '_') }}-{{ inventory_hostname }}.json
+    mode: "0600"
+    content: >-
+      {{
+        {
+          'check': health_check_id,
+          'component': health_component,
+          'host': inventory_hostname,
+          'status': health_status,
+          'message': health_message,
+          'details': health_details | default({})
+        }
+        | to_nice_json
+      }}
+  changed_when: false

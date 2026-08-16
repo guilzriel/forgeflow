@@ -1,0 +1,67 @@
+---
+- name: Collect safe PHP configuration evidence
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Read PHP version
+      ansible.builtin.command:
+        argv: [docker, exec, "{{ forgeflow_container }}", php, --version]
+      register: php_version
+      changed_when: false
+
+    - name: Read PHP configuration file locations
+      ansible.builtin.command:
+        argv: [docker, exec, "{{ forgeflow_container }}", php, --ini]
+      register: php_ini
+      changed_when: false
+
+    - name: Read loaded PHP modules
+      ansible.builtin.command:
+        argv: [docker, exec, "{{ forgeflow_container }}", php, -m]
+      register: php_modules
+      changed_when: false
+
+    - name: Read allowlisted PHP settings
+      ansible.builtin.command:
+        argv:
+          - docker
+          - exec
+          - "{{ forgeflow_container }}"
+          - php
+          - -r
+          - >-
+            echo json_encode([
+              'memory_limit'=>ini_get('memory_limit'),
+              'max_execution_time'=>ini_get('max_execution_time'),
+              'max_input_time'=>ini_get('max_input_time'),
+              'post_max_size'=>ini_get('post_max_size'),
+              'upload_max_filesize'=>ini_get('upload_max_filesize'),
+              'max_file_uploads'=>ini_get('max_file_uploads'),
+              'date.timezone'=>ini_get('date.timezone'),
+              'display_errors'=>ini_get('display_errors'),
+              'error_reporting'=>ini_get('error_reporting'),
+              'realpath_cache_size'=>ini_get('realpath_cache_size'),
+              'opcache.enable'=>ini_get('opcache.enable')
+            ], JSON_THROW_ON_ERROR);
+      register: php_settings
+      changed_when: false
+
+    - name: Write PHP comparison capture
+      ansible.builtin.copy:
+        dest: "{{ capture_output_dir }}/{{ inventory_hostname }}.json"
+        mode: "0600"
+        content: >-
+          {{
+            {
+              'host': inventory_hostname,
+              'component': 'php',
+              'data': {
+                'version': php_version.stdout_lines,
+                'ini': php_ini.stdout_lines,
+                'modules': php_modules.stdout_lines,
+                'settings': php_settings.stdout | from_json
+              }
+            }
+            | to_nice_json
+          }}
+      changed_when: false

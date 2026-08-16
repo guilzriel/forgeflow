@@ -1,0 +1,11 @@
+---
+- name: ForgeFlow full environment health dispatcher contract
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Explain full environment execution model
+      ansible.builtin.debug:
+        msg: >-
+          Full environment health is orchestrated by scripts/automation/run-full-environment-health.php
+          so every component runs even when an earlier component reports a failure.
+      changed_when: false

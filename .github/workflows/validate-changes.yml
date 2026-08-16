@@ -1,0 +1,146 @@
+---
+name: Validate Changes
+
+"on":
+  workflow_dispatch:
+    inputs:
+      validation:
+        description: Select a controlled configuration comparison
+        required: true
+        type: choice
+        options:
+          - "[APACHE] Compare Apache configuration"
+          - "[PHP] Compare PHP configuration"
+          - "[MYSQL] Compare MariaDB / MySQL configuration"
+      comparison_target:
+        description: Select an approved comparison pair
+        required: true
+        type: choice
+        options:
+          - "---- WEB PAIRS ----"
+          - "[DEMO-WEB] WEB-A vs WEB-B"
+          - "---- DATABASE PAIRS ----"
+          - "[DEMO-DB] DB-A vs DB-B"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ inputs.validation }}-${{ inputs.comparison_target }}
+  cancel-in-progress: false
+
+jobs:
+  compare:
+    name: ${{ inputs.validation }} — ${{ inputs.comparison_target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out exact source revision
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          coverage: none
+          tools: composer
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Install Ansible tooling
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check ansible-core ansible-lint yamllint
+
+      - name: Initialize comparison paths and demo password
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'CAPTURE_DIR=%s\n' "${RUNNER_TEMP}/forgeflow-config-captures" >> "${GITHUB_ENV}"
+          printf 'RESOLUTION_FILE=%s\n' "${RUNNER_TEMP}/forgeflow-comparison-resolution.json" >> "${GITHUB_ENV}"
+          printf 'MANIFEST_FILE=%s\n' "${RUNNER_TEMP}/forgeflow-comparison-manifest.json" >> "${GITHUB_ENV}"
+          printf 'COMPARISON_REPORT=%s\n' "${RUNNER_TEMP}/forgeflow-comparison-report.md" >> "${GITHUB_ENV}"
+          mkdir -p "${RUNNER_TEMP}/forgeflow-config-captures"
+          db_password="$(openssl rand -hex 24)"
+          echo "::add-mask::${db_password}"
+          printf 'MARIADB_ROOT_PASSWORD=%s\n' "${db_password}" >> "${GITHUB_ENV}"
+
+      - name: Start public demo topology
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose -f compose.demo.yaml up -d --build
+          php scripts/automation/wait-demo.php
+
+      - name: Validate operation catalogue
+        run: php scripts/automation/validate-catalog.php
+
+      - name: Resolve and authorize comparison
+        id: resolve
+        shell: bash
+        env:
+          REQUEST_VALIDATION: ${{ inputs.validation }}
+          REQUEST_TARGET: ${{ inputs.comparison_target }}
+        run: |
+          set -euo pipefail
+          php scripts/automation/resolve-config-comparison.php \
+            --operation "${REQUEST_VALIDATION}" \
+            --target "${REQUEST_TARGET}" \
+            --output "${RESOLUTION_FILE}" \
+            --github-output "${GITHUB_OUTPUT}"
+
+      - name: Reauthorize resolved comparison plan
+        run: php scripts/automation/authorize-resolution.php --type comparison --resolution "${RESOLUTION_FILE}"
+
+      - name: Build secret-free execution manifest
+        run: php scripts/automation/build-manifest.php --resolution "${RESOLUTION_FILE}" --output "${MANIFEST_FILE}"
+
+      - name: Run controlled Ansible syntax check
+        shell: bash
+        run: |
+          set -euo pipefail
+          ansible-playbook \
+            -i "${{ steps.resolve.outputs.inventory }}" \
+            "${{ steps.resolve.outputs.playbook }}" \
+            --syntax-check
+
+      - name: Collect read-only configuration evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          ansible-playbook \
+            -i "${{ steps.resolve.outputs.inventory }}" \
+            "${{ steps.resolve.outputs.playbook }}" \
+            --limit "${{ steps.resolve.outputs.ansible_limit }}" \
+            -e "capture_output_dir=${CAPTURE_DIR}"
+
+      - name: Compare normalized captures
+        shell: bash
+        run: |
+          set -euo pipefail
+          php scripts/automation/compare-captures.php \
+            --left "${CAPTURE_DIR}/${{ steps.resolve.outputs.left_host }}.json" \
+            --right "${CAPTURE_DIR}/${{ steps.resolve.outputs.right_host }}.json" \
+            --output "${COMPARISON_REPORT}"
+          cat "${COMPARISON_REPORT}" >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload safe comparison evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: forgeflow-config-comparison-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/forgeflow-comparison-manifest.json
+            ${{ runner.temp }}/forgeflow-comparison-report.md
+            ${{ runner.temp }}/forgeflow-config-captures/*.json
+          if-no-files-found: warn
+          retention-days: 21
+
+      - name: Stop demo topology
+        if: ${{ always() }}
+        shell: bash
+        run: docker compose -f compose.demo.yaml down --volumes --remove-orphans

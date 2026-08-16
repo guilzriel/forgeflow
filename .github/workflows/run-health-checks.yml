@@ -1,0 +1,208 @@
+---
+name: Run Health Checks
+
+"on":
+  workflow_dispatch:
+    inputs:
+      health_check:
+        description: Select an approved read-only health check
+        required: true
+        type: choice
+        options:
+          - "[BASIC] Connectivity"
+          - "[APACHE] Apache"
+          - "[PHP] PHP-FPM"
+          - "[APP] ForgeFlow application"
+          - "[REDIS] Redis"
+          - "[MYSQL] MariaDB / MySQL"
+          - "[STORAGE] Shared storage"
+          - "[FULL] Full environment"
+      target:
+        description: Select an approved demo target
+        required: true
+        type: choice
+        options:
+          - "---- WEB ----"
+          - "[DEMO-WEB] WEB-A"
+          - "[DEMO-WEB] WEB-B"
+          - "[DEMO-WEB] All web nodes"
+          - "---- DATABASE ----"
+          - "[DEMO-DB] DB-A"
+          - "[DEMO-DB] DB-B"
+          - "[DEMO-DB] All database nodes"
+          - "---- SERVICES ----"
+          - "[DEMO-REDIS] Redis"
+          - "[DEMO-STORAGE] Shared storage"
+          - "[DEMO] All services"
+          - "---- ENVIRONMENT ----"
+          - "[DEMO] Full environment"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: health-${{ inputs.health_check }}-${{ inputs.target }}
+  cancel-in-progress: false
+
+jobs:
+  execute:
+    name: Run ${{ inputs.health_check }} on ${{ inputs.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out exact source revision
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          coverage: none
+          tools: composer
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Install Ansible tooling
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check ansible-core ansible-lint yamllint
+
+      - name: Initialize evidence paths and demo password
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'HEALTH_RESULT_DIR=%s\n' "${RUNNER_TEMP}/forgeflow-health-results" >> "${GITHUB_ENV}"
+          printf 'RESOLUTION_FILE=%s\n' "${RUNNER_TEMP}/forgeflow-health-resolution.json" >> "${GITHUB_ENV}"
+          printf 'MANIFEST_FILE=%s\n' "${RUNNER_TEMP}/forgeflow-health-manifest.json" >> "${GITHUB_ENV}"
+          printf 'HEALTH_REPORT=%s\n' "${RUNNER_TEMP}/forgeflow-health-report.md" >> "${GITHUB_ENV}"
+          printf 'HEALTH_JSON=%s\n' "${RUNNER_TEMP}/forgeflow-health-results.json" >> "${GITHUB_ENV}"
+          db_password="$(openssl rand -hex 24)"
+          echo "::add-mask::${db_password}"
+          printf 'MARIADB_ROOT_PASSWORD=%s\n' "${db_password}" >> "${GITHUB_ENV}"
+
+      - name: Start public demo topology
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose -f compose.demo.yaml up -d --build
+          php scripts/automation/wait-demo.php
+
+      - name: Validate operation catalogue
+        run: php scripts/automation/validate-catalog.php
+
+      - name: Resolve and authorize health check
+        id: resolve
+        shell: bash
+        env:
+          REQUEST_HEALTH_CHECK: ${{ inputs.health_check }}
+          REQUEST_TARGET: ${{ inputs.target }}
+        run: |
+          set -euo pipefail
+          php scripts/automation/resolve-health-check.php \
+            --operation "${REQUEST_HEALTH_CHECK}" \
+            --target "${REQUEST_TARGET}" \
+            --output "${RESOLUTION_FILE}" \
+            --github-output "${GITHUB_OUTPUT}"
+
+      - name: Reauthorize resolved health plan
+        run: php scripts/automation/authorize-resolution.php --type health --resolution "${RESOLUTION_FILE}"
+
+      - name: Build secret-free execution manifest
+        run: php scripts/automation/build-manifest.php --resolution "${RESOLUTION_FILE}" --output "${MANIFEST_FILE}"
+
+      - name: Display approved blast radius
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -r '
+            $r=json_decode(file_get_contents(getenv("RESOLUTION_FILE")), true, 512, JSON_THROW_ON_ERROR);
+            echo "operation={$r["operation"]}\n";
+            echo "target={$r["requested_target"]}\n";
+            echo "resolved_host_count={$r["resolved_host_count"]}\n";
+            foreach ($r["resolved_hosts"] as $host) { echo "resolved_host={$host}\n"; }
+            echo "ansible_limit={$r["ansible_limit"]}\n";
+            echo "expected_result_count={$r["expected_result_count"]}\n";
+            echo "playbook={$r["playbook"]}\n";
+          '
+
+      - name: Run controlled Ansible syntax check
+        if: ${{ steps.resolve.outputs.operation != 'health.full_environment' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ansible-playbook \
+            -i "${{ steps.resolve.outputs.inventory }}" \
+            "${{ steps.resolve.outputs.playbook }}" \
+            --syntax-check
+
+      - name: Execute approved health check
+        if: ${{ steps.resolve.outputs.operation != 'health.full_environment' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ansible-playbook \
+            -i "${{ steps.resolve.outputs.inventory }}" \
+            "${{ steps.resolve.outputs.playbook }}" \
+            --limit "${{ steps.resolve.outputs.ansible_limit }}" \
+            -e "health_result_dir=${HEALTH_RESULT_DIR}"
+
+      - name: Run full-environment Ansible syntax checks
+        if: ${{ steps.resolve.outputs.operation == 'health.full_environment' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for playbook in \
+            ansible/playbooks/health-connectivity.yml \
+            ansible/playbooks/health-apache.yml \
+            ansible/playbooks/health-php-fpm.yml \
+            ansible/playbooks/health-application.yml \
+            ansible/playbooks/health-redis.yml \
+            ansible/playbooks/health-mysql.yml \
+            ansible/playbooks/health-storage.yml; do
+            ansible-playbook -i ansible/inventories/demo/hosts.yml "${playbook}" --syntax-check
+          done
+
+      - name: Execute full environment health check
+        if: ${{ steps.resolve.outputs.operation == 'health.full_environment' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          php scripts/automation/run-full-environment-health.php \
+            --result-dir "${HEALTH_RESULT_DIR}"
+
+      - name: Build human-readable health summary
+        id: summary
+        shell: bash
+        run: |
+          set +e
+          php scripts/automation/summarize-health-results.php \
+            --dir "${HEALTH_RESULT_DIR}" \
+            --markdown "${HEALTH_REPORT}" \
+            --json "${HEALTH_JSON}" \
+            --title "ForgeFlow ${{ inputs.health_check }} — ${{ inputs.target }}" \
+            --expected-count "${{ steps.resolve.outputs.expected_count }}" \
+            --fail-on-failure
+          summary_rc=$?
+          cat "${HEALTH_REPORT}" >> "${GITHUB_STEP_SUMMARY}"
+          exit "${summary_rc}"
+
+      - name: Upload health-check evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: forgeflow-health-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/forgeflow-health-manifest.json
+            ${{ runner.temp }}/forgeflow-health-results.json
+            ${{ runner.temp }}/forgeflow-health-report.md
+          if-no-files-found: warn
+          retention-days: 21
+
+      - name: Stop demo topology
+        if: ${{ always() }}
+        shell: bash
+        run: docker compose -f compose.demo.yaml down --volumes --remove-orphans

@@ -1,0 +1,40 @@
+---
+- name: ForgeFlow shared storage health check
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Verify shared storage sentinel is readable
+      ansible.builtin.command:
+        argv: [docker, exec, "{{ forgeflow_container }}", test, -r, /srv/forgeflow-shared/.forgeflow-sentinel]
+      register: storage_readable
+      changed_when: false
+      failed_when: false
+
+    - name: Read shared storage filesystem capacity
+      ansible.builtin.command:
+        argv: [docker, exec, "{{ forgeflow_container }}", df, -Pk, /srv/forgeflow-shared]
+      register: storage_df
+      changed_when: false
+      failed_when: false
+
+    - name: Read shared storage sentinel
+      ansible.builtin.command:
+        argv: [docker, exec, "{{ forgeflow_container }}", cat, /srv/forgeflow-shared/.forgeflow-sentinel]
+      register: storage_sentinel
+      changed_when: false
+      failed_when: false
+
+    - name: Build shared storage health result
+      ansible.builtin.set_fact:
+        health_check_id: health.storage
+        health_component: storage
+        health_status: "{{ 'PASS' if storage_readable.rc == 0 and storage_df.rc == 0 and storage_sentinel.stdout | trim == 'forgeflow-shared-storage-demo' else 'FAIL' }}"
+        health_message: >-
+          {{ 'Shared storage is readable and the common sentinel is visible.' if storage_readable.rc == 0 and storage_sentinel.stdout | trim == 'forgeflow-shared-storage-demo' else 'Shared storage visibility check failed.' }}
+        health_details:
+          readable: "{{ storage_readable.rc == 0 }}"
+          capacity_available: "{{ storage_df.rc == 0 }}"
+          sentinel_matches: "{{ storage_sentinel.stdout | trim == 'forgeflow-shared-storage-demo' }}"
+
+    - name: Record shared storage health result
+      ansible.builtin.include_tasks: tasks/write-health-result.yml
