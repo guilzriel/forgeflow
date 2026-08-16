@@ -50,6 +50,10 @@ jobs:
   ansible-quality:
     name: Ansible quality
     runs-on: ubuntu-latest
+    env:
+      ANSIBLE_CONFIG: ansible/ansible.cfg
+      ANSIBLE_ROLES_PATH: ansible/roles
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -60,7 +64,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m pip install --disable-pip-version-check ansible-core ansible-lint yamllint
+          python3 -m pip install --disable-pip-version-check \
+            "ansible-core>=2.17,<2.19" \
+            "ansible-lint>=25,<26" \
+            "yamllint>=1.35,<2"
+
+      - name: Install Ansible collections
+        run: >-
+          ansible-galaxy collection install
+          -r ansible/requirements.yml
 
       - name: Lint YAML
         shell: bash
@@ -74,8 +86,29 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for playbook in ansible/playbooks/health-*.yml ansible/playbooks/collect-*-config.yml; do
-            ansible-playbook -i ansible/inventories/demo/hosts.yml "${playbook}" --syntax-check
+
+          mapfile -t playbooks < <(
+            find ansible/playbooks \
+              -maxdepth 1 \
+              -type f \
+              \( -name 'health-*.yml' -o -name 'collect-*-config.yml' \) \
+              -print |
+            sort
+          )
+
+          if [ "${#playbooks[@]}" -ne 11 ]; then
+            echo "Expected 11 public demo playbooks; found ${#playbooks[@]}."
+            printf '%s\n' "${playbooks[@]}"
+            exit 1
+          fi
+
+          for playbook in "${playbooks[@]}"; do
+            echo "syntax_check=${playbook}"
+
+            ansible-playbook \
+              -i ansible/inventories/demo/hosts.yml \
+              "${playbook}" \
+              --syntax-check
           done
 
   container-quality:
@@ -117,7 +150,7 @@ jobs:
           test "${status}" = "404"
 
       - name: Scan combined image with Trivy
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: forgeflow:ci
           format: sarif
