@@ -1,0 +1,129 @@
+---
+name: Deploy Component
+run-name: >-
+  Plan ${{ inputs.component }} on ${{ inputs.target }}
+
+"on":
+  workflow_dispatch:
+    inputs:
+      component:
+        description: Component to deploy
+        required: true
+        type: choice
+        options:
+          - "[WEB] ForgeFlow runtime"
+
+      target:
+        description: Approved deployment target
+        required: true
+        type: choice
+        options:
+          - "[DEMO-WEB] WEB-A"
+          - "[DEMO-WEB] WEB-B"
+          - "[DEMO-WEB] All web nodes"
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    name: Plan approved component deployment
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out exact source revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Resolve approved deployment request
+        id: resolve
+        shell: bash
+        env:
+          COMPONENT: ${{ inputs.component }}
+          TARGET: ${{ inputs.target }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${COMPONENT}" != "[WEB] ForgeFlow runtime" ]]; then
+            echo "Unsupported component: ${COMPONENT}" >&2
+            exit 1
+          fi
+
+          case "${TARGET}" in
+            "[DEMO-WEB] WEB-A")
+              hosts="WEB-A"
+              maximum_hosts="1"
+              ;;
+            "[DEMO-WEB] WEB-B")
+              hosts="WEB-B"
+              maximum_hosts="1"
+              ;;
+            "[DEMO-WEB] All web nodes")
+              hosts="WEB-A,WEB-B"
+              maximum_hosts="2"
+              ;;
+            *)
+              echo "Unsupported deployment target: ${TARGET}" >&2
+              exit 1
+              ;;
+          esac
+
+          echo "component=${COMPONENT}" >> "${GITHUB_OUTPUT}"
+          echo "target=${TARGET}" >> "${GITHUB_OUTPUT}"
+          echo "hosts=${hosts}" >> "${GITHUB_OUTPUT}"
+          echo "maximum_hosts=${maximum_hosts}" >> "${GITHUB_OUTPUT}"
+
+      - name: Create secret-free deployment plan
+        shell: bash
+        env:
+          COMPONENT: ${{ steps.resolve.outputs.component }}
+          TARGET: ${{ steps.resolve.outputs.target }}
+          HOSTS: ${{ steps.resolve.outputs.hosts }}
+          MAXIMUM_HOSTS: ${{ steps.resolve.outputs.maximum_hosts }}
+        run: |
+          set -euo pipefail
+
+          cat > deployment-component-plan.json <<EOF
+          {
+            "plan_version": 1,
+            "category": "deploy_component",
+            "component": "${COMPONENT}",
+            "target": "${TARGET}",
+            "resolved_hosts": "${HOSTS}",
+            "maximum_hosts": ${MAXIMUM_HOSTS},
+            "source_revision": "${GITHUB_SHA}",
+            "risk": "medium",
+            "execution": "planning-only"
+          }
+          EOF
+
+          cat deployment-component-plan.json
+
+      - name: Upload deployment plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-component-plan-${{ github.run_id }}
+          path: deployment-component-plan.json
+          if-no-files-found: error
+
+      - name: Write deployment summary
+        shell: bash
+        run: |
+          {
+            echo "## Deploy Component"
+            echo
+            echo "**Planning result: PASS**"
+            echo
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Component | \`${{ steps.resolve.outputs.component }}\` |"
+            echo "| Target | \`${{ steps.resolve.outputs.target }}\` |"
+            echo "| Resolved hosts | \`${{ steps.resolve.outputs.hosts }}\` |"
+            echo "| Maximum hosts | \`${{ steps.resolve.outputs.maximum_hosts }}\` |"
+            echo "| Source revision | \`${GITHUB_SHA}\` |"
+            echo "| Execution | Planning only |"
+            echo
+            echo "> Actual Deploy Component execution will be added using the same controlled resolution and authorization model as the other operational workflows."
+          } >> "${GITHUB_STEP_SUMMARY}"

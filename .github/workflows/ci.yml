@@ -53,8 +53,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ANSIBLE_CONFIG: ansible/ansible.cfg
-      ANSIBLE_ROLES_PATH: ansible/roles
-
     steps:
       - name: Check out repository
         uses: actions/checkout@v4

@@ -45,7 +45,7 @@ The repository uses GitHub Actions for:
 
 ## Operational automation
 
-ForgeFlow exposes two operator-facing workflows.
+ForgeFlow is being organized around seven operator-facing operational workflows.
 
 ### Run Health Checks
 
@@ -76,6 +76,28 @@ Only allowlisted host pairs are valid. Web-server comparisons cannot target data
 
 Reports display meaningful differences only; matching values are omitted.
 
+
+### Deploy Component
+
+Deploy Component is category #2 in the seven-workflow operational model.
+
+The current implementation is deliberately planning-only while the controlled execution path is being built. It accepts only an approved component and approved demo web target, resolves that selection to an explicit host list and maximum blast radius, and publishes a secret-free deployment plan.
+
+The final execution path will follow the same fail-closed resolution and authorization model used by Health Checks and Validate Changes.
+
+### Seven-workflow operating model
+
+ForgeFlow maps operational automation into seven categories:
+
+1. Validate Changes
+2. Deploy Component
+3. Server Operations
+4. Service & Application Operations
+5. Health Checks
+6. Deploy Environment
+7. Rollback
+
+Continuous Integration remains outside those seven as the supporting quality gate for repository changes.
 ## Public demo topology
 
 `compose.demo.yaml` creates a disposable environment that can run on a GitHub-hosted runner:

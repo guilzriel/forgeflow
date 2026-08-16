@@ -1,7 +1,0 @@
-forgeflow_app_container_name: forgeflow
-forgeflow_app_internal_port: 8000
-forgeflow_app_state_directory: /opt/forgeflow
-forgeflow_app_health_path: /health
-forgeflow_app_health_retries: 20
-forgeflow_app_health_delay: 3
-forgeflow_app_log_level: INFO
