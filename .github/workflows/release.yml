@@ -1,5 +1,4 @@
-name: Release image
-
+name: Release Image
 'on':
   push:
     tags:

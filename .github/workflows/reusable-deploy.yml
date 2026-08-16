@@ -1,5 +1,4 @@
-name: Reusable deployment
-
+name: Deploy · Reusable
 'on':
   workflow_call:
     inputs:

@@ -1,5 +1,6 @@
 name: Deploy
-
+run-name: >-
+  Deploy · ${{ inputs.environment || github.ref_name }}
 'on':
   workflow_dispatch:
     inputs:
