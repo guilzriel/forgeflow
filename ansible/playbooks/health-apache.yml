@@ -32,7 +32,7 @@
           - "{{ forgeflow_container }}"
           - sh
           - -lc
-          - "ss -ltn | grep -Eq '(^|[:\\]])8080[[:space:]]'"
+          - "ss -ltn | grep -Eq ':8080[[:space:]]'"
       register: apache_listener
       changed_when: false
       failed_when: false
