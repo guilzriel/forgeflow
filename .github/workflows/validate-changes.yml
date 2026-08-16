@@ -1,6 +1,8 @@
 ---
 name: Validate Changes
-
+run-name: >-
+  Validate Changes · ${{ inputs.operation || 'Operation' }} ·
+  ${{ inputs.target || github.ref_name }}
 "on":
   workflow_dispatch:
     inputs:

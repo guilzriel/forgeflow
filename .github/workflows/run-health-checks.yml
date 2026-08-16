@@ -1,6 +1,8 @@
 ---
-name: Run Health Checks
-
+name: Health Checks
+run-name: >-
+  Health Checks · ${{ inputs.operation || 'Operation' }} ·
+  ${{ inputs.target || github.ref_name }}
 "on":
   workflow_dispatch:
     inputs:
